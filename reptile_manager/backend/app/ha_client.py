@@ -11,7 +11,9 @@ from . import models
 logger = logging.getLogger(__name__)
 
 async def notify_ha(config: models.HAConfig, event_type: str, data: dict) -> bool:
-    """Event an HA-Webhook senden."""
+    """Fire a native HA event and, if configured, call the HA webhook."""
+    from .ha_sync import fire_event
+    await fire_event(event_type, data)
     if not config.ha_url or not config.webhook_id:
         return False
 
@@ -31,17 +33,19 @@ async def notify_ha(config: models.HAConfig, event_type: str, data: dict) -> boo
 
 async def test_ha_connection(config: models.HAConfig) -> dict:
     """Verbindung zur HA-API testen."""
-    if not config.ha_url or not config.ha_token:
+    from .ha_sync import ha_target
+    base, token, mode = ha_target(config)
+    if not base:
         return {"success": False, "error": "URL or token not configured"}
 
-    url = f"{config.ha_url.rstrip('/')}/api/"
-    headers = {"Authorization": f"Bearer {config.ha_token}"}
+    url = f"{base}/api/"
+    headers = {"Authorization": f"Bearer {token}"}
 
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(url, headers=headers)
             if resp.status_code == 200:
-                return {"success": True, "message": "Connection successful"}
+                return {"success": True, "message": "Connection successful" + (" (via Supervisor)" if mode == "supervisor" else "")}
             return {"success": False, "error": f"HTTP {resp.status_code}"}
     except httpx.TimeoutException:
         return {"success": False, "error": "Connection timed out"}

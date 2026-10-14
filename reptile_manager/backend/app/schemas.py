@@ -246,6 +246,7 @@ class HAConfigUpdate(BaseModel):
     breeder_street:   Optional[str] = None
     breeder_zip_city: Optional[str] = None
     breeder_phone:    Optional[str] = None
+    entity_sync: Optional[bool] = None
 
 class HAConfigResponse(BaseModel):
     id: int
@@ -260,6 +261,7 @@ class HAConfigResponse(BaseModel):
     breeder_street:   Optional[str] = None
     breeder_zip_city: Optional[str] = None
     breeder_phone:    Optional[str] = None
+    entity_sync:      Optional[bool] = True
 
     model_config = {"from_attributes": True}
 

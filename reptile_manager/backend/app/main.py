@@ -1,6 +1,7 @@
 import os
 from datetime import datetime, timedelta, timezone
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request
+import asyncio
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
@@ -10,6 +11,7 @@ from .database import engine, get_db
 from .database import Base
 from . import models, schemas, auth
 from .access import scope_animals, scope_by_animal
+from . import ha_sync
 from .config import settings
 from .routers import animals, feedings, sheddings, breeding, custom_fields, ha, export, users
 
@@ -37,6 +39,19 @@ app.add_middleware(
 )
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+# Any successful change to husbandry data → push to Home Assistant (debounced)
+_SYNC_PATHS = ("/api/animals", "/api/feedings", "/api/sheddings", "/api/breeding",
+               "/api/custom-fields", "/api/groups", "/api/ha/config")
+
+@app.middleware("http")
+async def ha_sync_on_change(request: Request, call_next):
+    response = await call_next(request)
+    if (request.method in ("POST", "PUT", "PATCH", "DELETE")
+            and response.status_code < 400
+            and request.url.path.startswith(_SYNC_PATHS)):
+        ha_sync.schedule_sync()
+    return response
 
 app.include_router(animals.router,       prefix="/api/animals",       tags=["Animals"])
 app.include_router(feedings.router,      prefix="/api/feedings",      tags=["Feedings"])
@@ -90,12 +105,14 @@ async def startup_event():
                 ("breeder_street",   "VARCHAR(200)"),
                 ("breeder_zip_city", "VARCHAR(100)"),
                 ("breeder_phone",    "VARCHAR(50)"),
+                ("entity_sync",      "BOOLEAN DEFAULT 1"),
             ]:
                 if col not in ha_cols:
                     conn.execute(text(f"ALTER TABLE ha_config ADD COLUMN {col} {typedef}"))
             conn.commit()
         except Exception:
             pass
+    asyncio.get_running_loop().create_task(ha_sync.periodic_loop())
     db = next(get_db())
     try:
         if db.query(models.User).count() == 0:
