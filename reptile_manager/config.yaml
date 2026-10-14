@@ -1,5 +1,5 @@
 name: "Reptile Manager"
-version: "1.2.2"
+version: "1.2.3"
 slug: "reptile_manager"
 description: "Haltungsmanagement für Reptilien — Fütterungen, Häutungen, Zucht, Stammbaum & Home Assistant Integration"
 url: "https://github.com/demrios-de/reptile-manager"
