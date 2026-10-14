@@ -45,7 +45,7 @@ async def create_shedding(
     db.refresh(shedding)
 
     ha_cfg = db.query(models.HAConfig).first()
-    if ha_cfg and ha_cfg.enabled and ha_cfg.notify_shedding:
+    if ha_cfg and (ha_cfg.enabled or ha_cfg.entity_sync is not False) and ha_cfg.notify_shedding:
         await notify_ha(
             ha_cfg,
             "reptile_shedding",

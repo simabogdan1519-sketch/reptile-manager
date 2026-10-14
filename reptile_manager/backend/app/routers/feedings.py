@@ -46,7 +46,7 @@ async def create_feeding(
 
     # Push to Home Assistant
     ha_cfg = db.query(models.HAConfig).first()
-    if ha_cfg and ha_cfg.enabled and ha_cfg.notify_feeding:
+    if ha_cfg and (ha_cfg.enabled or ha_cfg.entity_sync is not False) and ha_cfg.notify_feeding:
         await notify_ha(
             ha_cfg,
             "reptile_feeding",

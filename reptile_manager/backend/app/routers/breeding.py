@@ -57,7 +57,7 @@ async def create_breeding(
     db.refresh(event)
 
     ha_cfg = db.query(models.HAConfig).first()
-    if ha_cfg and ha_cfg.enabled and ha_cfg.notify_breeding:
+    if ha_cfg and (ha_cfg.enabled or ha_cfg.entity_sync is not False) and ha_cfg.notify_breeding:
         await notify_ha(
             ha_cfg,
             "reptile_breeding",
