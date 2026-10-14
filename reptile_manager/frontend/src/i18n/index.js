@@ -14,11 +14,22 @@ import en from './en'
 const messages = { de, en }
 
 export const languages = {
-  de: { name: 'Deutsch',  flag: '🇩🇪' },
-  en: { name: 'English',  flag: '🇬🇧' },
+  en: { name: 'English', short: 'EN', intl: 'en-GB' },
+  de: { name: 'Deutsch', short: 'DE', intl: 'de-DE' },
 }
 
-export const locale = ref(localStorage.getItem('locale') || 'de')
+function initialLocale() {
+  try {
+    const saved = localStorage.getItem('locale')
+    if (saved && languages[saved]) return saved
+  } catch { /* storage unavailable */ }
+  // No saved choice: follow the browser language, fall back to English
+  const nav = (navigator.languages || [navigator.language || '']).map(l => String(l).slice(0, 2).toLowerCase())
+  return nav.find(l => languages[l]) || 'en'
+}
+
+export const locale = ref(initialLocale())
+document.documentElement.lang = locale.value
 
 function get(obj, path) {
   return path.split('.').reduce((o, k) => o?.[k], obj)
@@ -27,16 +38,18 @@ function get(obj, path) {
 export function setLocale(lang) {
   if (!languages[lang]) return
   locale.value = lang
-  localStorage.setItem('locale', lang)
+  try { localStorage.setItem('locale', lang) } catch { /* ignore */ }
   document.documentElement.lang = lang
 }
 
 export function useI18n() {
-  function t(key) {
+  function t(key, vars) {
     // Accessing locale.value makes Vue track reactivity automatically
-    return get(messages[locale.value], key)
-        ?? get(messages.de, key)
-        ?? key
+    let s = get(messages[locale.value], key) ?? get(messages.en, key) ?? key
+    if (vars && typeof s === 'string') {
+      s = s.replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? `{${k}}`))
+    }
+    return s
   }
   return { t, locale }
 }
