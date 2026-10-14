@@ -8,9 +8,11 @@ import '@fontsource-variable/instrument-sans'
 import '@fontsource/jetbrains-mono/400.css'
 import '@fontsource/jetbrains-mono/500.css'
 import './style.css'
+import { registerServiceWorker } from './utils/pwa'
 
 const app = createApp(App)
 app.use(createPinia())
 app.use(router)
 app.use(i18nPlugin)
 app.mount('#app')
+registerServiceWorker()
