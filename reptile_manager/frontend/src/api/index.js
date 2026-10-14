@@ -85,7 +85,7 @@ export const feedings   = { list: p => api.get('/feedings', { params: p }), crea
 export const sheddings  = { list: p => api.get('/sheddings',{ params: p }), create: d => api.post('/sheddings',d), update: (id,d) => api.put(`/sheddings/${id}`,d), delete: id => api.delete(`/sheddings/${id}`) }
 export const breeding   = { list: p => api.get('/breeding', { params: p }), create: d => api.post('/breeding', d), update: (id,d) => api.put(`/breeding/${id}`,d), delete: id => api.delete(`/breeding/${id}`) }
 export const customFields = { list: aid => api.get(`/custom-fields/animal/${aid}`), create: (aid,d) => api.post(`/custom-fields/animal/${aid}`,d), update: (fid,d) => api.put(`/custom-fields/${fid}`,d), delete: fid => api.delete(`/custom-fields/${fid}`) }
-export const ha = { getConfig: () => api.get('/ha/config'), updateConfig: d => api.put('/ha/config',d), test: () => api.post('/ha/test'), sync: () => api.post('/ha/sync') }
+export const ha = { getConfig: () => api.get('/ha/config'), updateConfig: d => api.put('/ha/config',d), test: () => api.post('/ha/test'), sync: () => api.post('/ha/sync'), syncStatus: () => api.get('/ha/sync-status') }
 
 export default api
 
