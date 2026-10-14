@@ -1,5 +1,7 @@
 <script setup>
-import { useI18n } from '@/i18n'
+import { useI18n, languages, locale } from '@/i18n'
+import PageHeader from '@/components/PageHeader.vue'
+import Icon from '@/components/Icon.vue'
 import { ref, onMounted, watch, nextTick, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { animals as animalsApi } from '@/api'
@@ -217,7 +219,7 @@ async function draw(canvas, dpi) {
   const lines = []
 
   if (c.show_sex)    lines.push(a.sex === 'male' ? '1.0.0' : a.sex === 'female' ? '0.1.0' : '0.0.1')
-  if (c.show_dob && a.date_of_birth) lines.push(`* ${new Date(a.date_of_birth).toLocaleDateString('de-DE')}`)
+  if (c.show_dob && a.date_of_birth) lines.push(`* ${new Date(a.date_of_birth).toLocaleDateString(languages[locale.value].intl)}`)
   if (c.show_weight && a.weight_g)   lines.push(`⚖ ${a.weight_g}g`)
 
   // Haltungsbedingungen
@@ -233,7 +235,7 @@ async function draw(canvas, dpi) {
   if (c.show_terrarium && a.terrarium_size) lines.push(`📦 ${a.terrarium_size}`)
   if (c.show_substrate && a.substrate)      lines.push(`🌱 ${a.substrate}`)
   if (c.show_uv && a.uv_required !== null && a.uv_required !== undefined) {
-    lines.push(a.uv_required ? t('animal.uv') : '🚫 ' + t('common.no') + ' UV')
+    lines.push(a.uv_required ? '☀ UV' : '🚫 ' + t('common.not_required') + ' UV')
   }
   if (c.custom_line1) lines.push(c.custom_line1)
   if (c.custom_line2) lines.push(c.custom_line2)
@@ -339,36 +341,32 @@ function sexNotation(sex) {
 
 <template>
   <div>
-    <div class="flex items-center gap-3 mb-5 flex-wrap">
-      <button class="btn-secondary btn-sm" @click="router.back()">{{ t('common.back') }}</button>
-      <h1 class="text-xl md:text-2xl font-bold text-slate-200">{{ t('label.title') }}</h1>
-      <span v-if="animal" class="text-slate-500 text-sm">{{ animal.name }}</span>
-    </div>
+    <PageHeader :eyebrow="animal?.name" :title="t('label.title')" back @back="router.back()" />
 
-    <div v-if="loading" class="text-slate-500 text-center py-16">Lade…</div>
+    <div v-if="loading" class="card h-80 animate-pulse" />
 
     <div v-else class="grid xl:grid-cols-[1fr_360px] gap-6 items-start">
 
       <!-- Preview -->
-      <div class="card">
-        <h2 class="font-semibold text-slate-300 mb-4 text-sm">{{ t('label.preview') }}</h2>
-        <div class="bg-[#080808] rounded-xl p-4 md:p-6 flex items-center justify-center min-h-[160px] relative">
-          <div v-if="rendering" class="absolute inset-0 flex items-center justify-center text-slate-600 text-sm">{{ t('label.rendering') }}</div>
+      <div class="card xl:sticky xl:top-10">
+        <h2 class="section-title mb-4">{{ t('label.preview') }}</h2>
+        <div class="bg-ink-950 border border-line rounded-xl p-4 md:p-8 flex items-center justify-center min-h-[160px] relative">
+          <div v-if="rendering" class="absolute inset-0 flex items-center justify-center text-fg-faint text-sm">{{ t('label.rendering') }}</div>
           <canvas ref="canvasRef" class="rounded shadow-2xl block" />
         </div>
-        <p class="text-center text-xs text-slate-600 mt-2">
+        <p class="text-center text-xs text-fg-faint mt-3 num">
           {{ cfg.width_mm }}×{{ cfg.height_mm }} mm · {{ cfg.export_dpi }} dpi · {{ exportSize }}
         </p>
         <div class="flex gap-3 mt-4 justify-center flex-wrap">
-          <button class="btn-primary btn-sm" @click="downloadPNG">⬇ {{ t('label.download_png') }}</button>
-          <button class="btn-secondary btn-sm" @click="printLabel(false)">🖨 {{ t('label.print_exact') }}</button>
-          <button class="btn-secondary btn-sm" @click="printLabel(true)">🖨 {{ t('label.print_a4') }}</button>
+          <button class="btn-primary btn-sm" @click="downloadPNG"><Icon name="download" :size="15" />{{ t('label.download_png') }}</button>
+          <button class="btn-secondary btn-sm" @click="printLabel(false)"><Icon name="printer" :size="15" />{{ t('label.print_exact') }}</button>
+          <button class="btn-secondary btn-sm" @click="printLabel(true)"><Icon name="printer" :size="15" />{{ t('label.print_a4') }}</button>
         </div>
         <div class="mt-3 flex items-center gap-3 justify-center">
-          <span class="text-xs text-slate-500">{{ t('label.dpi') }}:</span>
+          <span class="text-xs text-fg-faint">{{ t('label.dpi') }}</span>
           <select v-model.number="cfg.export_dpi" class="w-36 text-sm py-1">
             <option :value="150">150 dpi</option>
-            <option :value="300">300 dpi (Druck)</option>
+            <option :value="300">{{ t('label.dpi_print') }}</option>
             <option :value="600">600 dpi</option>
           </select>
         </div>
@@ -379,11 +377,11 @@ function sexNotation(sex) {
 
         <!-- Size -->
         <div class="card">
-          <h3 class="cfg-h">📐 {{ t('label.size') }}</h3>
+          <h3 class="cfg-h">{{ t('label.size') }}</h3>
           <div class="flex flex-wrap gap-1.5 mb-3">
             <button v-for="p in SIZE_PRESETS" :key="p.label"
               class="btn-secondary btn-sm text-xs"
-              :class="activeSize === p.label ? '!border-brand-500 !text-brand-400' : ''"
+              :class="activeSize === p.label ? '!border-moss-400/60 !text-moss-300 !bg-moss-400/10' : ''"
               @click="cfg.width_mm = p.w; cfg.height_mm = p.h">
               {{ p.label }}
             </button>
@@ -396,7 +394,7 @@ function sexNotation(sex) {
 
         <!-- Colors -->
         <div class="card">
-          <h3 class="cfg-h">🎨 {{ t('label.colors') }}</h3>
+          <h3 class="cfg-h">{{ t('label.colors') }}</h3>
           <div class="flex flex-wrap gap-1.5 mb-3">
             <button v-for="p in COLOR_PRESETS" :key="p.label"
               class="px-2 py-1 rounded text-xs border-2 font-medium"
@@ -416,34 +414,34 @@ function sexNotation(sex) {
               <div class="flex gap-2"><input type="color" v-model="cfg.accent_color" class="color-sw" /><input v-model="cfg.accent_color" class="flex-1 text-xs" /></div>
             </div>
             <div>
-              <label class="flex items-center gap-1.5"><input type="checkbox" v-model="cfg.border" class="w-3.5 h-3.5" /> Rahmen</label>
+              <label class="flex items-center gap-1.5"><input type="checkbox" v-model="cfg.border" /> {{ t('label.border') }}</label>
               <div class="flex gap-2 mt-1"><input type="color" v-model="cfg.border_color" class="color-sw" :disabled="!cfg.border" /><input type="number" v-model.number="cfg.border_width" min="0.5" max="5" step="0.5" class="flex-1 text-xs" :disabled="!cfg.border" placeholder="mm" /></div>
             </div>
           </div>
           <div class="mt-2">
-            <label>Eckenradius: {{ cfg.corner_radius }} mm</label>
-            <input type="range" v-model.number="cfg.corner_radius" min="0" max="20" step="0.5" class="w-full accent-green-500" />
+            <label>{{ t('label.radius') }}: <span class="num">{{ cfg.corner_radius }} mm</span></label>
+            <input type="range" v-model.number="cfg.corner_radius" min="0" max="20" step="0.5" class="w-full" />
           </div>
         </div>
 
         <!-- Content -->
         <div class="card">
-          <h3 class="cfg-h">📝 {{ t('label.content') }}</h3>
+          <h3 class="cfg-h">{{ t('label.content') }}</h3>
 
           <!-- Foto -->
-          <div class="flex items-center gap-3 mb-3 p-2 bg-surface-600 rounded-lg">
+          <label class="option mb-3" :class="{ on: cfg.show_photo }">
             <input type="checkbox" v-model="cfg.show_photo" class="w-4 h-4" />
-            <div>
-              <span class="text-sm text-slate-300 font-medium">📷 {{ t('label.show_photo') }}</span>
-              <p v-if="!animal?.photo_url" class="text-xs text-yellow-500 mt-0.5">{{ t('label.no_photo') }}</p>
-              <p v-else class="text-xs text-slate-500 mt-0.5">{{ t('label.photo_hint') }}</p>
-            </div>
-          </div>
+            <span>
+              <span class="option-title block">{{ t('label.show_photo') }}</span>
+              <span v-if="!animal?.photo_url" class="option-desc block !text-heat-400">{{ t('label.no_photo') }}</span>
+              <span v-else class="option-desc block">{{ t('label.photo_hint') }}</span>
+            </span>
+          </label>
 
           <!-- Emoji -->
           <div class="flex items-center gap-3 mb-3">
             <input type="checkbox" v-model="cfg.show_emoji" class="w-4 h-4" />
-            <label class="mb-0 text-sm">Icon</label>
+            <span class="text-sm text-fg-muted">{{ t('label.icon') }}</span>
             <input v-model="cfg.emoji" :disabled="!cfg.show_emoji" class="w-12 text-center text-lg px-1 py-0.5" />
           </div>
 
@@ -456,10 +454,10 @@ function sexNotation(sex) {
           </div>
 
           <!-- Haltungsbedingungen auf Schild -->
-          <div class="border-t border-surface-500 pt-3 mb-3">
-            <p class="text-xs text-slate-500 mb-2">Haltungsbedingungen:</p>
+          <div class="border-t border-line pt-3 mb-3">
+            <p class="eyebrow mb-2">{{ t('animal.husbandry') }}</p>
             <div class="grid grid-cols-2 gap-x-4 gap-y-1.5">
-              <label v-for="[k,l] in [['show_temp',t('animal.temp_day').split(' ')[0] + ' ' + t('animal.temp_day').split(' ')[1] || '🌡'],['show_humidity','💧 ' + t('animal.humidity_min').split(' ')[0]],['show_terrarium','📦 ' + t('animal.terrarium')],['show_substrate','🌱 ' + t('animal.substrate')],['show_uv','☀ UV']]"
+              <label v-for="[k,l] in [['show_temp', t('animal.temperature')],['show_humidity', t('animal.humidity')],['show_terrarium', t('animal.terrarium')],['show_substrate', t('animal.substrate')],['show_uv', 'UV']]"
                 :key="k" class="flex items-center gap-2 text-sm cursor-pointer mb-0">
                 <input type="checkbox" v-model="cfg[k]" class="w-3.5 h-3.5" />{{ l }}
               </label>
@@ -467,18 +465,18 @@ function sexNotation(sex) {
           </div>
 
           <div class="space-y-2">
-            <div><label>{{ t('label.custom_line1') }}</label><input v-model="cfg.custom_line1" placeholder="z.B. Breeder…" /></div>
-            <div><label>{{ t('label.custom_line2') }}</label><input v-model="cfg.custom_line2" placeholder="z.B. Saison 2025" /></div>
+            <div><label>{{ t('label.custom_line1') }}</label><input v-model="cfg.custom_line1" :placeholder="t('label.custom_line1_ph')" /></div>
+            <div><label>{{ t('label.custom_line2') }}</label><input v-model="cfg.custom_line2" :placeholder="t('label.custom_line2_ph')" /></div>
           </div>
         </div>
 
         <!-- QR -->
         <div class="card">
           <div class="flex items-center justify-between mb-3">
-            <h3 class="cfg-h !mb-0">📷 QR-Code</h3>
+            <h3 class="cfg-h !mb-0">{{ t('label.qr') }}</h3>
             <label class="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" v-model="cfg.qr_enabled" class="w-4 h-4" />
-              <span class="text-sm">{{ t('common.yes') }}</span>
+              <span class="text-sm text-fg-muted">{{ t('common.enabled') }}</span>
             </label>
           </div>
           <div v-if="cfg.qr_enabled" class="space-y-3">
@@ -489,15 +487,15 @@ function sexNotation(sex) {
                         :key="val" type="button"
                         class="flex-1 py-1.5 rounded-lg text-xs font-medium border transition-all"
                         :class="cfg.qr_target === val
-                          ? 'bg-brand-600 border-brand-500 text-white'
-                          : 'bg-surface-600 border-surface-500 text-slate-400 hover:text-slate-200'"
+                          ? 'bg-moss-400/10 border-moss-400/50 text-moss-300'
+                          : 'bg-ink-850 border-line-strong text-fg-muted hover:text-fg'"
                         @click="cfg.qr_target = val">
                   {{ label }}
                 </button>
               </div>
-              <p class="text-xs text-slate-600 mt-1.5">
+              <p class="text-xs text-fg-faint mt-1.5">
                 <template v-if="cfg.qr_target === 'browser'">{{ t('label.qr_browser_hint') }}</template>
-                <template v-else-if="cfg.qr_target === 'ha_app'">Öffnet dieses Tier direkt in der HA Companion App</template>
+                <template v-else-if="cfg.qr_target === 'ha_app'">{{ t('label.qr_ha_hint') }}</template>
                 <template v-else>{{ t('label.qr_custom_hint') }}</template>
               </p>
             </div>
@@ -505,7 +503,7 @@ function sexNotation(sex) {
               <label>{{ t('label.qr_content') }}</label>
               <input v-model="cfg.qr_content" :placeholder="t('label.qr_placeholder')" />
             </div>
-            <div v-else class="bg-surface-600 rounded-lg px-3 py-2 text-xs text-slate-400 font-mono break-all">
+            <div v-else class="rounded-lg border border-line bg-ink-950 px-3 py-2 text-xs text-fg-muted font-mono break-all">
               {{ cfg.qr_content }}
             </div>
           </div>
@@ -517,6 +515,6 @@ function sexNotation(sex) {
 </template>
 
 <style scoped>
-.cfg-h { @apply text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3; }
+.cfg-h { @apply section-title mb-3; }
 .color-sw { @apply w-10 h-9 p-0.5 rounded cursor-pointer flex-shrink-0 border-0 bg-transparent; }
 </style>

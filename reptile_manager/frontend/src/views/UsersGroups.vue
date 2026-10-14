@@ -3,6 +3,11 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 import { users as usersApi, groups as groupsApi } from '@/api'
+import { errorMessage } from '@/utils/format'
+import PageHeader from '@/components/PageHeader.vue'
+import Icon from '@/components/Icon.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import Modal from '@/components/Modal.vue'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -16,10 +21,7 @@ const error = ref('')
 const groupName = computed(() => Object.fromEntries(groupList.value.map(g => [g.id, g.name])))
 const userName  = computed(() => Object.fromEntries(userList.value.map(u => [u.id, u.username])))
 
-function errMsg(e) {
-  const d = e.response?.data?.detail
-  return Array.isArray(d) ? d.map(x => x.msg).join(', ') : (d || e.message)
-}
+const errMsg = errorMessage
 
 async function load() {
   loading.value = true
@@ -116,150 +118,142 @@ function toggle(arr, id) {
 </script>
 
 <template>
-  <div class="max-w-4xl">
-    <h1 class="text-2xl font-bold text-slate-200 mb-6">👥 {{ t('access.nav') }}</h1>
+  <div>
+    <PageHeader :eyebrow="t('access.eyebrow')" :title="t('access.nav')" :subtitle="t('access.subtitle')">
+      <template #actions>
+        <div class="seg h-9 items-center">
+          <button v-for="k in ['users','groups']" :key="k" :class="{ on: tab === k }" @click="tab = k">
+            {{ t(`access.${k}`) }} <span class="num text-fg-faint ml-1">{{ k === 'users' ? userList.length : groupList.length }}</span>
+          </button>
+        </div>
+        <button class="btn-primary" @click="tab === 'users' ? newUser() : newGroup()">
+          <Icon name="plus" :size="16" />{{ tab === 'users' ? t('access.add_user') : t('access.add_group') }}
+        </button>
+      </template>
+    </PageHeader>
 
-    <div class="flex gap-2 mb-6">
-      <button v-for="k in ['users','groups']" :key="k" type="button"
-        class="px-4 py-1.5 rounded-lg text-sm font-medium border transition-all"
-        :class="tab === k ? 'bg-brand-600 border-brand-500 text-white'
-                          : 'bg-surface-600 border-surface-500 text-slate-400 hover:text-slate-200'"
-        @click="tab = k">
-        {{ t(`access.${k}`) }}
-        <span class="ml-1 opacity-60">{{ k === 'users' ? userList.length : groupList.length }}</span>
-      </button>
-    </div>
+    <div v-if="error" class="alert-error mb-4"><Icon name="alert" :size="16" />{{ error }}</div>
+    <div v-if="loading" class="card h-48 animate-pulse" />
 
-    <div v-if="error" class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm mb-4">⚠ {{ error }}</div>
-    <div v-if="loading" class="text-slate-500 text-center py-16">{{ t('common.loading') }}</div>
+    <!-- USERS -->
+    <section v-else-if="tab === 'users'" class="panel animate-rise">
+      <EmptyState v-if="!userList.length" icon="users" :title="t('access.no_users')" />
+      <ul v-else class="divide-y divide-line/70">
+        <li v-for="u in userList" :key="u.id" class="flex flex-col sm:flex-row sm:items-center gap-3 px-5 py-4 hover:bg-ink-850/60 transition-colors">
+          <div class="flex items-center gap-3.5 flex-1 min-w-0">
+            <div class="w-10 h-10 rounded-xl grid place-items-center font-display font-bold flex-shrink-0"
+                 :class="u.is_admin ? 'bg-heat-400/15 text-heat-400 border border-heat-400/30' : 'bg-ink-800 text-fg border border-line-strong'">
+              {{ u.username[0]?.toUpperCase() }}
+            </div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-semibold text-fg">{{ u.username }}</span>
+                <span v-if="u.id === auth.user?.id" class="text-xs text-fg-faint">({{ t('access.you') }})</span>
+                <span v-if="u.is_admin" class="badge-yellow"><Icon name="shield" :size="11" />{{ t('access.admin') }}</span>
+                <span v-if="!u.is_active" class="badge-red">{{ t('access.disabled') }}</span>
+              </div>
+              <div class="flex flex-wrap gap-1.5 mt-1.5">
+                <span v-for="g in u.groups" :key="g.id" class="badge-gray"><Icon name="group" :size="11" />{{ g.name }}</span>
+                <span v-if="!u.groups.length && !u.is_admin" class="text-xs text-fg-faint">{{ t('access.no_membership') }}</span>
+                <span v-if="u.is_admin && !u.groups.length" class="text-xs text-fg-faint">{{ t('access.sees_all') }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="flex gap-1.5 flex-shrink-0">
+            <button class="btn-secondary btn-sm" @click="editUser(u)"><Icon name="edit" :size="14" />{{ t('common.edit') }}</button>
+            <button class="btn-danger btn-sm btn-icon" :disabled="u.id === auth.user?.id" @click="deleteUser(u)"><Icon name="trash" :size="14" /></button>
+          </div>
+        </li>
+      </ul>
+    </section>
 
-    <!-- ── USERS ─────────────────────────────────────────────────────────── -->
-    <template v-else-if="tab === 'users'">
-      <div class="flex justify-end mb-4">
-        <button class="btn-primary btn-sm" @click="newUser">+ {{ t('access.add_user') }}</button>
+    <!-- GROUPS -->
+    <template v-else>
+      <div v-if="!groupList.length" class="card"><EmptyState icon="group" :title="t('access.groups')" :text="t('access.no_groups')" /></div>
+      <div v-else class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4 stagger">
+        <article v-for="g in groupList" :key="g.id" class="card flex flex-col">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <h3 class="font-display font-semibold text-[18px] text-fg truncate">{{ g.name }}</h3>
+              <p class="text-xs text-fg-faint mt-0.5 min-h-[16px]">{{ g.description }}</p>
+            </div>
+            <span class="badge-green num flex-shrink-0"><Icon name="reptile" :size="12" />{{ g.animal_count }}</span>
+          </div>
+          <p class="eyebrow mt-4 mb-2">{{ t('access.members') }}</p>
+          <div class="flex flex-wrap gap-1.5 flex-1 content-start">
+            <span v-for="id in g.member_ids" :key="id" class="badge-gray"><Icon name="user" :size="11" />{{ userName[id] ?? '#' + id }}</span>
+            <span v-if="!g.member_ids.length" class="text-xs text-fg-faint">—</span>
+          </div>
+          <div class="flex gap-1.5 mt-5 pt-4 border-t border-line">
+            <button class="btn-secondary btn-sm flex-1" @click="editGroup(g)"><Icon name="edit" :size="14" />{{ t('common.edit') }}</button>
+            <button class="btn-danger btn-sm btn-icon" @click="deleteGroup(g)"><Icon name="trash" :size="14" /></button>
+          </div>
+        </article>
       </div>
+    </template>
 
-      <form v-if="userForm" class="card space-y-4 mb-6" @submit.prevent="saveUser">
-        <h2 class="font-semibold text-slate-200">{{ userForm.id ? t('access.edit_user') : t('access.add_user') }}</h2>
-        <div v-if="userError" class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">⚠ {{ userError }}</div>
+    <!-- User modal -->
+    <Modal :open="!!userForm" :title="userForm?.id ? t('access.edit_user') : t('access.add_user')" icon="user" width="max-w-lg" @close="userForm = null">
+      <form v-if="userForm" id="userForm" class="space-y-4" @submit.prevent="saveUser">
+        <div v-if="userError" class="alert-error"><Icon name="alert" :size="16" />{{ userError }}</div>
         <div class="grid sm:grid-cols-2 gap-4">
           <div><label>{{ t('access.username') }} *</label><input v-model="userForm.username" required autocomplete="off" /></div>
           <div><label>{{ t('access.email') }}</label><input v-model="userForm.email" type="email" autocomplete="off" /></div>
           <div class="sm:col-span-2">
             <label>{{ t('access.password') }} {{ userForm.id ? '' : '*' }}</label>
             <input v-model="userForm.password" type="password" :required="!userForm.id" minlength="6" autocomplete="new-password" />
-            <p v-if="userForm.id" class="text-xs text-slate-600 mt-1">{{ t('access.password_keep') }}</p>
+            <p v-if="userForm.id" class="hint">{{ t('access.password_keep') }}</p>
           </div>
         </div>
-        <div class="flex flex-wrap gap-6">
-          <label class="flex items-center gap-2 cursor-pointer mb-0">
-            <input type="checkbox" v-model="userForm.is_admin" class="w-4 h-4" /> {{ t('access.admin') }}
+        <div class="grid sm:grid-cols-2 gap-2">
+          <label class="option" :class="{ on: userForm.is_admin }">
+            <input type="checkbox" v-model="userForm.is_admin" />
+            <span><span class="option-title block">{{ t('access.admin') }}</span><span class="option-desc block">{{ t('access.admin_hint') }}</span></span>
           </label>
-          <label class="flex items-center gap-2 cursor-pointer mb-0">
-            <input type="checkbox" v-model="userForm.is_active" class="w-4 h-4" /> {{ t('access.active') }}
+          <label class="option" :class="{ on: userForm.is_active }">
+            <input type="checkbox" v-model="userForm.is_active" />
+            <span><span class="option-title block">{{ t('access.active') }}</span><span class="option-desc block">{{ t('access.active_hint') }}</span></span>
           </label>
         </div>
-        <p v-if="userForm.is_admin" class="text-xs text-slate-500">{{ t('access.admin_hint') }}</p>
         <div>
           <label>{{ t('access.member_of') }}</label>
-          <p v-if="!groupList.length" class="text-sm text-slate-500">{{ t('access.no_groups') }}</p>
+          <p v-if="!groupList.length" class="text-sm text-fg-faint">{{ t('access.no_groups') }}</p>
           <div class="flex flex-wrap gap-2">
-            <button v-for="g in groupList" :key="g.id" type="button"
-              class="px-3 py-1 rounded-full text-sm border transition-all"
-              :class="userForm.group_ids.includes(g.id) ? 'bg-brand-600 border-brand-500 text-white'
-                      : 'bg-surface-600 border-surface-500 text-slate-400 hover:text-slate-200'"
-              @click="toggle(userForm.group_ids, g.id)">
-              {{ userForm.group_ids.includes(g.id) ? '✓ ' : '' }}{{ g.name }}
+            <button v-for="g in groupList" :key="g.id" type="button" class="chip" :class="{ on: userForm.group_ids.includes(g.id) }"
+                    @click="toggle(userForm.group_ids, g.id)">
+              <Icon :name="userForm.group_ids.includes(g.id) ? 'check' : 'plus'" :size="13" />{{ g.name }}
             </button>
           </div>
         </div>
-        <div class="flex gap-3">
-          <button class="btn-primary btn-sm" :disabled="userSaving">{{ userSaving ? t('common.saving') : t('common.save') }}</button>
-          <button type="button" class="btn-secondary btn-sm" @click="userForm = null">{{ t('common.cancel') }}</button>
-        </div>
       </form>
+      <template #footer>
+        <button class="btn-ghost" @click="userForm = null">{{ t('common.cancel') }}</button>
+        <button class="btn-primary" form="userForm" :disabled="userSaving">{{ userSaving ? t('common.saving') : t('common.save') }}</button>
+      </template>
+    </Modal>
 
-      <div v-if="!userList.length" class="text-slate-500 text-center py-10">{{ t('access.no_users') }}</div>
-      <div v-else class="card p-0 overflow-hidden">
-        <div v-for="u in userList" :key="u.id"
-             class="border-b border-surface-600 hover:bg-surface-600/50 transition-colors flex flex-col sm:flex-row sm:items-center gap-2 px-4 py-3 last:border-b-0">
-          <div class="flex items-center gap-3 flex-1 min-w-0">
-            <div class="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
-              {{ u.username[0]?.toUpperCase() }}
-            </div>
-            <div class="min-w-0">
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="font-medium text-slate-200">{{ u.username }}</span>
-                <span v-if="u.id === auth.user?.id" class="text-xs text-slate-500">({{ t('access.you') }})</span>
-                <span v-if="u.is_admin" class="badge-yellow">{{ t('access.admin') }}</span>
-                <span v-if="!u.is_active" class="badge-red">{{ t('access.disabled') }}</span>
-              </div>
-              <div class="flex flex-wrap gap-1 mt-1">
-                <span v-for="g in u.groups" :key="g.id" class="badge-blue">{{ g.name }}</span>
-              </div>
-            </div>
-          </div>
-          <div class="flex gap-2 flex-shrink-0">
-            <button class="btn-secondary btn-sm" @click="editUser(u)">{{ t('common.edit') }}</button>
-            <button class="btn-danger btn-sm" :disabled="u.id === auth.user?.id" @click="deleteUser(u)">🗑</button>
-          </div>
-        </div>
-      </div>
-    </template>
-
-    <!-- ── GROUPS ────────────────────────────────────────────────────────── -->
-    <template v-else>
-      <div class="flex justify-end mb-4">
-        <button class="btn-primary btn-sm" @click="newGroup">+ {{ t('access.add_group') }}</button>
-      </div>
-
-      <form v-if="groupForm" class="card space-y-4 mb-6" @submit.prevent="saveGroup">
-        <h2 class="font-semibold text-slate-200">{{ groupForm.id ? t('access.edit_group') : t('access.add_group') }}</h2>
-        <div v-if="groupError" class="bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">⚠ {{ groupError }}</div>
-        <div class="grid sm:grid-cols-2 gap-4">
-          <div><label>{{ t('access.group_name') }} *</label><input v-model="groupForm.name" required /></div>
-          <div><label>{{ t('access.description') }}</label><input v-model="groupForm.description" /></div>
-        </div>
+    <!-- Group modal -->
+    <Modal :open="!!groupForm" :title="groupForm?.id ? t('access.edit_group') : t('access.add_group')" icon="group" width="max-w-lg" @close="groupForm = null">
+      <form v-if="groupForm" id="groupForm" class="space-y-4" @submit.prevent="saveGroup">
+        <div v-if="groupError" class="alert-error"><Icon name="alert" :size="16" />{{ groupError }}</div>
+        <div><label>{{ t('access.group_name') }} *</label><input v-model="groupForm.name" required /></div>
+        <div><label>{{ t('access.description') }}</label><input v-model="groupForm.description" /></div>
         <div>
           <label>{{ t('access.members') }}</label>
           <div class="flex flex-wrap gap-2">
-            <button v-for="u in userList.filter(x => !x.is_admin)" :key="u.id" type="button"
-              class="px-3 py-1 rounded-full text-sm border transition-all"
-              :class="groupForm.member_ids.includes(u.id) ? 'bg-brand-600 border-brand-500 text-white'
-                      : 'bg-surface-600 border-surface-500 text-slate-400 hover:text-slate-200'"
-              @click="toggle(groupForm.member_ids, u.id)">
-              {{ groupForm.member_ids.includes(u.id) ? '✓ ' : '' }}{{ u.username }}
+            <button v-for="u in userList.filter(x => !x.is_admin)" :key="u.id" type="button" class="chip" :class="{ on: groupForm.member_ids.includes(u.id) }"
+                    @click="toggle(groupForm.member_ids, u.id)">
+              <Icon :name="groupForm.member_ids.includes(u.id) ? 'check' : 'plus'" :size="13" />{{ u.username }}
             </button>
+            <span v-if="!userList.filter(x => !x.is_admin).length" class="text-sm text-fg-faint">{{ t('access.no_regular_users') }}</span>
           </div>
-          <p class="text-xs text-slate-600 mt-2">{{ t('access.admin_hint') }}</p>
-        </div>
-        <div class="flex gap-3">
-          <button class="btn-primary btn-sm" :disabled="groupSaving">{{ groupSaving ? t('common.saving') : t('common.save') }}</button>
-          <button type="button" class="btn-secondary btn-sm" @click="groupForm = null">{{ t('common.cancel') }}</button>
+          <p class="hint">{{ t('access.admin_hint') }}</p>
         </div>
       </form>
-
-      <div v-if="!groupList.length && !groupForm" class="text-slate-500 text-center py-10">{{ t('access.no_groups') }}</div>
-      <div v-else class="grid sm:grid-cols-2 gap-3">
-        <div v-for="g in groupList" :key="g.id" class="card">
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <div class="font-semibold text-slate-200">{{ g.name }}</div>
-              <p v-if="g.description" class="text-xs text-slate-500 mt-0.5">{{ g.description }}</p>
-            </div>
-            <span class="badge-green flex-shrink-0">🦎 {{ g.animal_count }}</span>
-          </div>
-          <div class="text-xs text-slate-500 mt-3 mb-1">{{ t('access.members') }}</div>
-          <div class="flex flex-wrap gap-1 min-h-[1.5rem]">
-            <span v-for="id in g.member_ids" :key="id" class="badge-gray">{{ userName[id] ?? '#' + id }}</span>
-            <span v-if="!g.member_ids.length" class="text-xs text-slate-600">—</span>
-          </div>
-          <div class="flex gap-2 mt-4">
-            <button class="btn-secondary btn-sm flex-1" @click="editGroup(g)">{{ t('common.edit') }}</button>
-            <button class="btn-danger btn-sm" @click="deleteGroup(g)">🗑</button>
-          </div>
-        </div>
-      </div>
-    </template>
+      <template #footer>
+        <button class="btn-ghost" @click="groupForm = null">{{ t('common.cancel') }}</button>
+        <button class="btn-primary" form="groupForm" :disabled="groupSaving">{{ groupSaving ? t('common.saving') : t('common.save') }}</button>
+      </template>
+    </Modal>
   </div>
 </template>

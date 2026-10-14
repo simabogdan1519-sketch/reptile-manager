@@ -3,6 +3,10 @@ import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from '@/i18n'
 import { animals as animalsApi, exportApi, buildBaseURL } from '@/api'
+import { sexNotation, sexBadge } from '@/utils/format'
+import PageHeader from '@/components/PageHeader.vue'
+import Icon from '@/components/Icon.vue'
+import AnimalAvatar from '@/components/AnimalAvatar.vue'
 
 const { t }  = useI18n()
 const route  = useRoute()
@@ -94,7 +98,7 @@ async function downloadHkn() {
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
     a.href = url
-    a.download = `herkunftsnachweis${blanko.value ? '_blanko' : ''}_${new Date().toISOString().slice(0,10)}.pdf`
+    a.download = `${t('export.filename')}${blanko.value ? '_blank' : ''}_${new Date().toISOString().slice(0,10)}.pdf`
     document.body.appendChild(a); a.click(); document.body.removeChild(a)
     setTimeout(() => URL.revokeObjectURL(url), 2000)
   } catch (e) {
@@ -102,147 +106,129 @@ async function downloadHkn() {
       const text = await e.response.data.text()
       try { exportError.value = JSON.parse(text)?.detail || text } catch { exportError.value = text }
     } else {
-      exportError.value = `HTTP ${e.response?.status || 'Network Error'}: ${e.message}`
+      exportError.value = `HTTP ${e.response?.status || t('common.network_error')}: ${e.message}`
     }
   } finally { genHkn.value = false }
 }
 
 
-function sexNotation(sex) {
-  if (sex === 'male')   return '1.0.0'
-  if (sex === 'female') return '0.1.0'
-  return '0.0.1'
-}
-
-function sexIcon(sex) {
-  return sex === 'male' ? '♂' : sex === 'female' ? '♀' : '?'
-}
-function sexClass(sex) {
-  return sex === 'male' ? 'text-blue-400' : sex === 'female' ? 'text-pink-400' : 'text-slate-500'
-}
 </script>
 
 <template>
-  <div class="max-w-4xl">
-    <h1 class="text-xl md:text-2xl font-bold text-slate-200 mb-6">📄 {{ t('export.title') }}</h1>
+  <div>
+    <PageHeader :eyebrow="t('export.eyebrow')" :title="t('export.title')" :subtitle="t('export.subtitle')" />
 
-    <!-- ── Bestandsliste / Inventory ──────────────────────────────────── -->
-    <div class="card mb-6">
-      <h2 class="font-semibold text-slate-200 mb-1">{{ t('export.inventory_title') }}</h2>
-      <p class="text-sm text-slate-500 mb-4">{{ t('export.inventory_desc') }}</p>
-      <button class="btn-primary" :disabled="genInv" @click="downloadInventory">
-        {{ genInv ? '⏳ …' : t('export.inventory_btn') }}
+    <!-- Inventory -->
+    <section class="card mb-5 flex flex-col sm:flex-row sm:items-center gap-4 animate-rise">
+      <span class="w-11 h-11 rounded-xl bg-lagoon-400/10 border border-lagoon-400/25 text-lagoon-400 grid place-items-center flex-shrink-0">
+        <Icon name="sheet" :size="20" />
+      </span>
+      <div class="flex-1 min-w-0">
+        <h2 class="font-display font-semibold text-fg text-[17px]">{{ t('export.inventory_title') }}</h2>
+        <p class="text-sm text-fg-muted mt-0.5">{{ t('export.inventory_desc') }}</p>
+      </div>
+      <button class="btn-secondary" :disabled="genInv" @click="downloadInventory">
+        <Icon name="download" :size="16" />{{ genInv ? t('export.generating') : t('export.inventory_btn') }}
       </button>
-    </div>
+    </section>
 
-    <!-- ── Herkunftsnachweis / Origin Certificate ──────────────────── -->
-    <div class="card">
-      <h2 class="font-semibold text-slate-200 mb-1">{{ t('export.hkn_title') }}</h2>
-      <p class="text-sm text-slate-500 mb-5">{{ t('export.hkn_desc') }}</p>
-
-      <div v-if="exportError" class="mb-4 bg-red-900/40 border border-red-700 text-red-300 rounded-lg px-4 py-3 text-sm">
-        ⚠ {{ exportError }}
+    <!-- Certificate -->
+    <section class="panel animate-rise">
+      <div class="px-5 py-4 border-b border-line flex items-start gap-4">
+        <span class="w-11 h-11 rounded-xl bg-moss-400/10 border border-moss-400/25 text-moss-400 grid place-items-center flex-shrink-0">
+          <Icon name="certificate" :size="20" />
+        </span>
+        <div>
+          <h2 class="font-display font-semibold text-fg text-[17px]">{{ t('export.hkn_title') }}</h2>
+          <p class="text-sm text-fg-muted mt-0.5">{{ t('export.hkn_desc') }}</p>
+        </div>
       </div>
 
-      <div class="grid md:grid-cols-2 gap-6">
+      <div v-if="exportError" class="alert-error m-5 mb-0"><Icon name="alert" :size="16" />{{ exportError }}</div>
 
-        <!-- Left: animal selection -->
-        <div>
-          <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">
-            {{ t('export.select_animals') }}
-          </h3>
-          <input v-model="searchTerm" @input="applySearch"
-                 :placeholder="t('common.search')" class="mb-3" />
-          <div class="max-h-72 overflow-y-auto border border-surface-500 rounded-xl divide-y divide-surface-600">
-            <div v-if="loading" class="p-4 text-slate-500 text-sm text-center">{{ t('common.loading') }}</div>
-            <div v-for="a in (searchTerm ? filteredAnimals : allAnimals)" :key="a.id"
-                 class="flex items-center gap-3 px-3 py-2.5 hover:bg-surface-600 cursor-pointer transition-colors"
-                 :class="selectedIds.includes(a.id) ? 'bg-brand-900/30' : ''"
-                 @click="toggleAnimal(a.id)">
-              <input type="checkbox" :checked="selectedIds.includes(a.id)" class="w-4 h-4 flex-shrink-0" readonly />
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-1.5">
-                  <span class="text-sm font-medium text-slate-200 truncate">{{ a.name }}</span>
-                  <span :class="sexClass(a.sex)" class="text-sm flex-shrink-0">{{ sexNotation(a.sex) }}</span>
-                </div>
-                <p class="text-xs text-slate-500 italic truncate">{{ a.species }}</p>
-              </div>
-              <span v-if="a.tracking_id" class="text-xs text-slate-600 flex-shrink-0">#{{ a.tracking_id }}</span>
-            </div>
-            <div v-if="!loading && allAnimals.length === 0" class="p-4 text-slate-500 text-sm text-center">
-              {{ t('animal.noAnimals') }}
-            </div>
+      <div class="grid lg:grid-cols-2">
+        <!-- Step 1 -->
+        <div class="p-5 lg:border-r border-line">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="step"><span>1</span>{{ t('export.select_animals') }}</h3>
+            <span class="badge-gray num">{{ selectedIds.length }}</span>
           </div>
-          <p class="text-xs text-slate-600 mt-2">{{ selectedIds.length }} {{ t('export.selected') }}</p>
+          <div class="relative mb-3">
+            <Icon name="search" :size="16" class="absolute left-3 top-1/2 -translate-y-1/2 text-fg-faint pointer-events-none" />
+            <input v-model="searchTerm" @input="applySearch" :placeholder="t('common.search')" class="!pl-9" />
+          </div>
+          <div class="max-h-[380px] overflow-y-auto rounded-xl border border-line divide-y divide-line/70 bg-ink-950/40">
+            <div v-if="loading" class="p-6 text-fg-faint text-sm text-center">{{ t('common.loading') }}</div>
+            <label v-for="a in (searchTerm ? filteredAnimals : allAnimals)" :key="a.id"
+                   class="flex items-center gap-3 px-3 py-2.5 mb-0 cursor-pointer transition-colors font-normal"
+                   :class="selectedIds.includes(a.id) ? 'bg-moss-400/[0.07]' : 'hover:bg-ink-850'">
+              <input type="checkbox" :checked="selectedIds.includes(a.id)" @change="toggleAnimal(a.id)" />
+              <AnimalAvatar :animal="a" size="w-9 h-9" rounded="rounded-lg" />
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-semibold text-fg truncate">{{ a.name }}</span>
+                  <span :class="sexBadge(a.sex)">{{ sexNotation(a.sex) }}</span>
+                </div>
+                <p class="text-xs text-fg-faint italic truncate">{{ a.species }}</p>
+              </div>
+              <span v-if="a.tracking_id" class="text-xs text-fg-faint num flex-shrink-0">#{{ a.tracking_id }}</span>
+            </label>
+            <div v-if="!loading && allAnimals.length === 0" class="p-6 text-fg-faint text-sm text-center">{{ t('animal.noAnimals') }}</div>
+          </div>
         </div>
 
-        <!-- Right: options -->
-        <div class="space-y-4">
-
-          <!-- Blanko toggle -->
-          <label class="flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors"
-                 :class="blanko ? 'border-brand-500 bg-brand-900/20' : 'border-surface-500 hover:border-surface-400'">
-            <input type="checkbox" v-model="blanko" class="w-4 h-4 flex-shrink-0" />
-            <div>
-              <div class="text-sm font-medium text-slate-200">{{ t('export.blanko_label') }}</div>
-              <div class="text-xs text-slate-500">{{ t('export.blanko_hint') }}</div>
-            </div>
+        <!-- Steps 2-4 -->
+        <div class="p-5 space-y-6 border-t lg:border-t-0 border-line">
+          <label class="option" :class="{ on: blanko }">
+            <input type="checkbox" v-model="blanko" />
+            <span><span class="option-title block">{{ t('export.blanko_label') }}</span><span class="option-desc block">{{ t('export.blanko_hint') }}</span></span>
           </label>
 
-          <!-- Buyer -->
           <div v-if="!blanko">
-            <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">
-              {{ t('export.buyer') }}
-            </h3>
-            <div class="space-y-2">
-              <input v-model="buyer.name"     :placeholder="t('animal.name')" />
-              <input v-model="buyer.street"   :placeholder="t('export.buyer_street')" />
+            <h3 class="step mb-3"><span>2</span>{{ t('export.buyer') }}</h3>
+            <div class="grid sm:grid-cols-2 gap-2.5">
+              <input v-model="buyer.name"     :placeholder="t('export.buyer_name')" class="sm:col-span-2" />
+              <input v-model="buyer.street"   :placeholder="t('export.buyer_street')" class="sm:col-span-2" />
               <input v-model="buyer.zip_city" :placeholder="t('export.buyer_zip')" />
               <input v-model="buyer.phone"    :placeholder="t('export.buyer_phone')" />
             </div>
           </div>
 
-          <!-- Origin -->
           <div>
-            <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3">
-              {{ t('export.origin') }}
-            </h3>
-            <div class="space-y-2">
-              <label v-for="[val, key] in [
-                ['bestand',   'export.origins.bestand'],
-                ['nachzucht', 'export.origins.nachzucht'],
-                ['einfuhr',   'export.origins.einfuhr'],
-                ['sonstiges', 'export.origins.sonstiges'],
-              ]" :key="val" class="flex items-center gap-2 cursor-pointer text-sm text-slate-300">
-                <input type="radio" :value="val" v-model="originType" class="w-4 h-4" />
-                {{ t(key) }}
+            <h3 class="step mb-3"><span>{{ blanko ? 2 : 3 }}</span>{{ t('export.origin') }}</h3>
+            <div class="grid sm:grid-cols-2 gap-2">
+              <label v-for="val in ['bestand','nachzucht','einfuhr','sonstiges']" :key="val"
+                     class="option !items-center" :class="{ on: originType === val }">
+                <input type="radio" :value="val" v-model="originType" />
+                <span class="option-title !font-medium">{{ t('export.origins.' + val) }}</span>
               </label>
-              <div v-if="originType === 'einfuhr'" class="grid grid-cols-2 gap-2 mt-2 ml-6">
-                <input v-model="citesNr"   placeholder="Cites-Nr" class="text-sm" />
-                <input v-model="einfuhrNr" :placeholder="t('export.einfuhr_nr')" class="text-sm" />
-              </div>
-              <input v-if="originType === 'sonstiges'" v-model="sonstigesText"
-                     :placeholder="t('export.sonstiges_placeholder')" class="ml-6 text-sm" />
             </div>
+            <div v-if="originType === 'einfuhr'" class="grid grid-cols-2 gap-2.5 mt-2.5">
+              <input v-model="citesNr" :placeholder="t('export.cites_nr')" />
+              <input v-model="einfuhrNr" :placeholder="t('export.einfuhr_nr')" />
+            </div>
+            <input v-if="originType === 'sonstiges'" v-model="sonstigesText" :placeholder="t('export.sonstiges_placeholder')" class="mt-2.5" />
           </div>
 
-          <!-- Location -->
           <div v-if="!blanko">
-            <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-2">
-              {{ t('export.location') }}
-            </h3>
+            <h3 class="step mb-3"><span>4</span>{{ t('export.location') }}</h3>
             <input v-model="ort" :placeholder="t('export.location_placeholder')" />
-            <p class="text-xs text-slate-600 mt-1">{{ t('export.location_hint') }}</p>
+            <p class="hint">{{ t('export.location_hint') }}</p>
           </div>
         </div>
       </div>
 
-      <div class="mt-6 pt-4 border-t border-surface-500 flex flex-wrap gap-3 items-center">
+      <div class="px-5 py-4 border-t border-line bg-ink-950/40 flex flex-wrap gap-3 items-center justify-between">
+        <span class="text-xs text-fg-faint flex items-center gap-1.5"><Icon name="shield" :size="14" />{{ t('export.legal_hint') }}</span>
         <button class="btn-primary" :disabled="genHkn || !selectedIds.length" @click="downloadHkn">
-          {{ genHkn ? t('export.generating') : (blanko ? t('export.blanko_btn') : t('export.generate_btn')) }}
+          <Icon name="download" :size="16" />{{ genHkn ? t('export.generating') : (blanko ? t('export.blanko_btn') : t('export.generate_btn')) }}
         </button>
-        <span class="text-xs text-slate-600">{{ t('export.legal_hint') }}</span>
       </div>
-    </div>
+    </section>
   </div>
 </template>
+
+<style scoped>
+.step { @apply flex items-center gap-2.5 font-display font-semibold text-[15px] text-fg; }
+.step > span { @apply w-6 h-6 rounded-md bg-ink-800 border border-line-strong grid place-items-center font-mono text-[11px] text-moss-400; }
+</style>

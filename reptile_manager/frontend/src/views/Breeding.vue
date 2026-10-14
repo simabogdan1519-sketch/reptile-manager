@@ -3,8 +3,18 @@ import { ref, onMounted } from 'vue'
 import { breeding as breedingApi, animals as animalsApi } from '@/api'
 import { bulk } from '@/api'
 import { useI18n } from '@/i18n'
+import { useRouter } from 'vue-router'
+import { fmtDate, sexNotation, sexBadge, errorMessage } from '@/utils/format'
+import PageHeader from '@/components/PageHeader.vue'
+import Icon from '@/components/Icon.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import Modal from '@/components/Modal.vue'
 
 const { t } = useI18n()
+const router = useRouter()
+const formError = ref('')
+const bulkError = ref('')
+const bulkDone = ref('')
 
 const list = ref([])
 const allAnimals = ref([])
@@ -35,10 +45,12 @@ function resetForm() {
   form.value = { female_id: '', male_id: '', date_paired: '', date_separated: '', copulation_observed: false, date_eggs_or_birth: '', clutch_size: '', fertile_count: '', success: null, notes: '' }
   editId.value = null
   showForm.value = false
+  formError.value = ''
 }
 
 async function save() {
   saving.value = true
+  formError.value = ''
   try {
     const payload = { ...form.value, female_id: parseInt(form.value.female_id), male_id: parseInt(form.value.male_id) }
     if (!payload.date_paired) payload.date_paired = null
@@ -56,6 +68,8 @@ async function save() {
       list.value.unshift(res.data)
     }
     resetForm()
+  } catch (e) {
+    formError.value = errorMessage(e)
   } finally {
     saving.value = false
   }
@@ -84,7 +98,6 @@ async function remove(id) {
   list.value = list.value.filter(e => e.id !== id)
 }
 
-function fmtDate(d) { return d ? new Date(d).toLocaleDateString('de-DE') : '—' }
 
 // Bulk offspring
 const showBulkModal  = ref(false)
@@ -102,6 +115,7 @@ function openBulk(event) {
   bulkDob.value = new Date().toISOString().slice(0, 10)
   bulkSex.value = 'unknown'
   bulkNotes.value = ''
+  bulkError.value = ''
 }
 
 async function createBulk() {
@@ -109,8 +123,11 @@ async function createBulk() {
   savingBulk.value = true
   try {
     const ev = bulkEvent.value
+    const mother = allAnimals.value.find(a => a.id === ev.female_id)
+    bulkError.value = ''
     await bulk.createAnimals(bulkQty.value, {
-      name: `${ev.female.species} NZ ${new Date().getFullYear()}`,
+      name: t('breeding.offspring_name', { name: ev.female.name, year: new Date().getFullYear() }),
+      group_id: mother?.group_id ?? null,
       species: ev.female.species,
       common_name: ev.female.common_name || null,
       sex: bulkSex.value,
@@ -122,55 +139,67 @@ async function createBulk() {
       status: 'active',
     })
     showBulkModal.value = false
-    alert(`${bulkQty.value} Tier(e) erfolgreich angelegt!`)
+    bulkDone.value = t('breeding.bulk_done', { n: bulkQty.value })
+    setTimeout(() => (bulkDone.value = ''), 5000)
   } catch (e) {
-    alert('Fehler: ' + (e.response?.data?.detail || e.message))
+    bulkError.value = errorMessage(e)
   } finally {
     savingBulk.value = false
   }
 }
 const males   = () => allAnimals.value.filter(a => a.sex !== 'female')
 const females = () => allAnimals.value.filter(a => a.sex !== 'male')
+
+function outcome(e) {
+  if (e.success === true)  return { cls: 'badge-green',  key: 'true' }
+  if (e.success === false) return { cls: 'badge-red',    key: 'false' }
+  return { cls: 'badge-yellow', key: 'null' }
+}
 </script>
 
 <template>
   <div>
-    <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold text-slate-200">{{ t('breeding.title') }}</h1>
-      <button class="btn-primary btn-sm" @click="showForm = !showForm; if(!showForm) resetForm()">
-        {{ showForm ? t('common.cancel') : '+ ' + t('breeding.add') }}
-      </button>
+    <PageHeader :eyebrow="t('breeding.eyebrow')" :title="t('breeding.title')" :subtitle="t('common.n_entries', { n: list.length })">
+      <template #actions>
+        <button class="btn-primary" @click="showForm ? resetForm() : (showForm = true)">
+          <Icon :name="showForm ? 'x' : 'plus'" :size="16" />{{ showForm ? t('common.cancel') : t('breeding.add') }}
+        </button>
+      </template>
+    </PageHeader>
+
+    <div v-if="bulkDone" class="alert-ok mb-4"><Icon name="check" :size="16" />{{ bulkDone }}
+      <button class="link ml-auto" @click="router.push('/animals')">{{ t('animal.title') }} <Icon name="chevron" :size="14" /></button>
     </div>
 
     <!-- Form -->
-    <div v-if="showForm" class="card mb-6">
-      <h3 class="font-medium text-slate-200 mb-4">{{ editId ? t('common.edit') + ' ' + t('breeding.add') : t('breeding.add') }}</h3>
-      <form @submit.prevent="save" class="grid sm:grid-cols-2 gap-4">
+    <form v-if="showForm" class="card mb-6 animate-rise" @submit.prevent="save">
+      <h2 class="section-title mb-4">{{ editId ? t('breeding.edit') : t('breeding.add') }}</h2>
+      <div v-if="formError" class="alert-error mb-4"><Icon name="alert" :size="16" />{{ formError }}</div>
+
+      <div class="grid md:grid-cols-[1fr_auto_1fr] gap-3 items-end mb-5">
         <div>
-          <label>{{ t('breeding.female') }} *</label>
+          <label><span class="text-female">♀</span> {{ t('breeding.female') }} *</label>
           <select v-model="form.female_id" required>
-            <option value="">Wählen…</option>
-            <option v-for="a in females()" :key="a.id" :value="a.id">{{ a.name }} – {{ a.morph ?? a.species }}</option>
+            <option value="" disabled>{{ t('common.choose') }}</option>
+            <option v-for="a in females()" :key="a.id" :value="a.id">{{ a.name }} · {{ a.morph ?? a.species }}</option>
           </select>
         </div>
+        <div class="hidden md:grid place-items-center h-[38px] text-fg-faint font-display text-xl">×</div>
         <div>
-          <label>{{ t('breeding.male') }} *</label>
+          <label><span class="text-male">♂</span> {{ t('breeding.male') }} *</label>
           <select v-model="form.male_id" required>
-            <option value="">Wählen…</option>
-            <option v-for="a in males()" :key="a.id" :value="a.id">{{ a.name }} – {{ a.morph ?? a.species }}</option>
+            <option value="" disabled>{{ t('common.choose') }}</option>
+            <option v-for="a in males()" :key="a.id" :value="a.id">{{ a.name }} · {{ a.morph ?? a.species }}</option>
           </select>
         </div>
+      </div>
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <div><label>{{ t('breeding.paired') }}</label><input type="date" v-model="form.date_paired" /></div>
         <div><label>{{ t('breeding.separated') }}</label><input type="date" v-model="form.date_separated" /></div>
-        <div class="flex items-end pb-2">
-          <label class="flex items-center gap-2 cursor-pointer text-sm">
-            <input type="checkbox" v-model="form.copulation_observed" class="w-4 h-4" />
-            {{ t('breeding.copulation') }}
-          </label>
-        </div>
         <div><label>{{ t('breeding.birth') }}</label><input type="date" v-model="form.date_eggs_or_birth" /></div>
-        <div><label>{{ t('breeding.clutch_size') }}</label><input type="number" v-model="form.clutch_size" min="0" placeholder="8" /></div>
-        <div><label>{{ t('breeding.fertile') }}</label><input type="number" v-model="form.fertile_count" min="0" /></div>
+        <div><label>{{ t('breeding.clutch_size') }}</label><input type="number" v-model="form.clutch_size" min="0" placeholder="8" class="num" /></div>
+        <div><label>{{ t('breeding.fertile') }}</label><input type="number" v-model="form.fertile_count" min="0" class="num" /></div>
         <div>
           <label>{{ t('breeding.success') }}</label>
           <select v-model="form.success">
@@ -179,114 +208,103 @@ const females = () => allAnimals.value.filter(a => a.sex !== 'male')
             <option :value="false">{{ t('breeding.successLabels.false') }}</option>
           </select>
         </div>
-        <div class="sm:col-span-2"><label>{{ t('breeding.notes') }}</label><textarea v-model="form.notes" rows="2" /></div>
-        <div class="sm:col-span-2 flex gap-2">
-          <button type="submit" class="btn-primary btn-sm" :disabled="saving">
-            {{ saving ? t('common.saving') : editId ? t('common.save') : t('breeding.add') }}
-          </button>
-          <button type="button" class="btn-secondary btn-sm" @click="resetForm">{{ t('common.cancel') }}</button>
-        </div>
-      </form>
-    </div>
+        <label class="option sm:col-span-2 lg:col-span-3" :class="{ on: form.copulation_observed }">
+          <input type="checkbox" v-model="form.copulation_observed" /><span class="option-title">{{ t('breeding.copulation') }}</span>
+        </label>
+        <div class="sm:col-span-2 lg:col-span-3"><label>{{ t('breeding.notes') }}</label><textarea v-model="form.notes" rows="2" /></div>
+      </div>
+      <div class="flex gap-2 mt-4">
+        <button type="submit" class="btn-primary" :disabled="saving">{{ saving ? t('common.saving') : t('common.save') }}</button>
+        <button type="button" class="btn-ghost" @click="resetForm">{{ t('common.cancel') }}</button>
+      </div>
+    </form>
 
     <!-- List -->
-    <div v-if="loading" class="text-slate-500 text-center py-16">{{ t('common.loading') }}</div>
-    <div v-else-if="!list.length" class="text-center py-16 text-slate-500">
-      <div class="text-4xl mb-3">🥚</div>
-      <p>{{ t('breeding.noEntries') }}</p>
+    <div v-if="loading" class="space-y-3"><div v-for="i in 3" :key="i" class="card h-36 animate-pulse" /></div>
+    <div v-else-if="!list.length" class="card">
+      <EmptyState icon="egg" :title="t('breeding.noEntries')" :text="t('breeding.empty_text')" />
     </div>
-    <div v-else class="space-y-3">
-      <div v-for="e in list" :key="e.id" class="card">
-        <div class="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div class="flex items-center gap-3 flex-wrap">
-              <span class="font-semibold text-slate-200">
-                <span class="text-slate-300"><span class="text-slate-500 font-mono text-xs">0.1.0</span> {{ e.female.name }}</span>
-                <span class="text-slate-500 mx-2">×</span>
-                <span class="text-slate-300"><span class="text-slate-500 font-mono text-xs">1.0.0</span> {{ e.male.name }}</span>
-              </span>
-              <span v-if="e.success === true" class="badge-green">{{ t('breeding.successLabels.true') }}</span>
-              <span v-else-if="e.success === false" class="badge-red">{{ t('breeding.successLabels.false') }}</span>
-              <span v-else class="badge-gray">{{ t('breeding.successLabels.null') }}</span>
-            </div>
-            <div class="text-xs text-slate-500 mt-1 flex flex-wrap gap-3">
-              <span v-if="e.female.morph" class="text-pink-300/60">{{ e.female.morph }}</span>
-              <span v-if="e.male.morph" class="text-blue-300/60">{{ e.male.morph }}</span>
-            </div>
-          </div>
-          <div class="flex gap-2">
-            <button class="btn-secondary btn-sm text-xs" @click="openBulk(e)" :title="t('breeding.addOffspring')">🐣</button>
-            <button class="btn-secondary btn-sm text-xs" @click="edit(e)">✏️</button>
-            <button class="btn-danger btn-sm text-xs" @click="remove(e.id)">🗑</button>
+    <div v-else class="grid lg:grid-cols-2 gap-4 stagger">
+      <article v-for="e in list" :key="e.id" class="card">
+        <div class="flex items-start justify-between gap-3 mb-4">
+          <span :class="outcome(e).cls"><span class="dot" />{{ t('breeding.successLabels.' + outcome(e).key) }}</span>
+          <div class="flex gap-1 -mr-2 -mt-1">
+            <button class="icon-btn" :title="t('breeding.addOffspring')" @click="openBulk(e)"><Icon name="hatch" :size="16" /></button>
+            <button class="icon-btn" :title="t('common.edit')" @click="edit(e)"><Icon name="edit" :size="16" /></button>
+            <button class="icon-btn danger" :title="t('common.delete')" @click="remove(e.id)"><Icon name="trash" :size="16" /></button>
           </div>
         </div>
 
-        <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-          <div>
-            <span class="text-slate-500">{{ t('breeding.paired') }}</span>
-            <div class="text-slate-300">{{ fmtDate(e.date_paired) }}</div>
-          </div>
-          <div>
-            <span class="text-slate-500">{{ t('breeding.separated') }}</span>
-            <div class="text-slate-300">{{ fmtDate(e.date_separated) }}</div>
-          </div>
-          <div>
-            <span class="text-slate-500">{{ t('breeding.birth') }}</span>
-            <div class="text-slate-300">{{ fmtDate(e.date_eggs_or_birth) }}</div>
-          </div>
-          <div>
-            <span class="text-slate-500">{{ t('breeding.birth') }}</span>
-            <div class="text-slate-300">
-              {{ e.clutch_size != null ? e.clutch_size : '—' }}
-              <span v-if="e.fertile_count != null"> ({{ e.fertile_count }} {{ t('breeding.fertile').toLowerCase() }})</span>
-            </div>
-          </div>
+        <!-- Pair -->
+        <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+          <button class="tile text-left hover:border-female/40 transition-colors min-w-0" @click="router.push(`/animals/${e.female_id}`)">
+            <span :class="sexBadge('female')">{{ sexNotation('female') }}</span>
+            <div class="font-display font-semibold text-fg mt-1.5 truncate">{{ e.female.name }}</div>
+            <div class="text-[11.5px] text-fg-faint truncate">{{ e.female.morph || e.female.species }}</div>
+          </button>
+          <span class="font-display text-2xl text-fg-faint">×</span>
+          <button class="tile text-left hover:border-male/40 transition-colors min-w-0" @click="router.push(`/animals/${e.male_id}`)">
+            <span :class="sexBadge('male')">{{ sexNotation('male') }}</span>
+            <div class="font-display font-semibold text-fg mt-1.5 truncate">{{ e.male.name }}</div>
+            <div class="text-[11.5px] text-fg-faint truncate">{{ e.male.morph || e.male.species }}</div>
+          </button>
         </div>
-        <div v-if="e.notes" class="mt-2 text-xs text-slate-500">{{ e.notes }}</div>
-      </div>
+
+        <!-- Timeline -->
+        <ol class="grid grid-cols-3 gap-2 mt-5 relative">
+          <span class="absolute left-[8%] right-[8%] top-[5px] h-px bg-line" />
+          <li v-for="step in [
+                { k: 'paired', d: e.date_paired },
+                { k: 'separated', d: e.date_separated },
+                { k: 'birth_short', d: e.date_eggs_or_birth },
+              ]" :key="step.k" class="relative text-center">
+            <span class="relative z-10 block mx-auto w-[11px] h-[11px] rounded-full border-2"
+                  :class="step.d ? 'bg-moss-400 border-moss-400' : 'bg-ink-900 border-line-strong'" />
+            <div class="eyebrow mt-2 !tracking-[0.12em]">{{ t('breeding.' + step.k) }}</div>
+            <div class="text-[13px] mt-0.5 num" :class="step.d ? 'text-fg' : 'text-fg-faint'">{{ fmtDate(step.d) }}</div>
+          </li>
+        </ol>
+
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-1 mt-4 pt-4 border-t border-line text-[13px]">
+          <span class="text-fg-muted">{{ t('breeding.clutch_size') }}: <b class="text-fg num">{{ e.clutch_size ?? '—' }}</b></span>
+          <span class="text-fg-muted">{{ t('breeding.fertile') }}: <b class="text-fg num">{{ e.fertile_count ?? '—' }}</b></span>
+          <span v-if="e.copulation_observed" class="badge-gray"><Icon name="check" :size="12" />{{ t('breeding.copulation_short') }}</span>
+        </div>
+        <p v-if="e.notes" class="text-[13px] text-fg-muted mt-3 whitespace-pre-line">{{ e.notes }}</p>
+      </article>
     </div>
 
-    <!-- Bulk offspring modal -->
-    <Teleport to="body">
-      <div v-if="showBulkModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-black/70" @click="showBulkModal = false" />
-        <div class="relative bg-surface-700 rounded-2xl border border-surface-500 w-full max-w-md shadow-2xl p-6">
-          <h2 class="font-semibold text-slate-200 mb-4">
-            🐣 {{ t('breeding.addOffspring') }}
-            <span v-if="bulkEvent" class="text-sm text-slate-400 font-normal ml-1">
-              — {{ bulkEvent.female.species }}
-            </span>
-          </h2>
-          <div class="space-y-4">
-            <div>
-              <label>{{ t('breeding.quantity') }}</label>
-              <input type="number" v-model.number="bulkQty" min="1" max="500" />
-              <p class="text-xs text-slate-500 mt-1">Jedes Tier bekommt automatisch eine fortlaufende ID</p>
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div><label>{{ t('animal.dob') }}</label><input type="date" v-model="bulkDob" /></div>
-              <div>
-                <label>{{ t('animal.sex') }}</label>
-                <select v-model="bulkSex">
-                  <option value="unknown">{{ t('animal.sexes.unknown') }}</option>
-                  <option value="male">{{ t('animal.sexes.male') }}</option>
-                  <option value="female">{{ t('animal.sexes.female') }}</option>
-                </select>
-              </div>
-            </div>
-            <div>
-              <label>{{ t('breeding.notes') }}</label>
-              <textarea v-model="bulkNotes" rows="2" placeholder="z.B. Saison 2025, Farbform…" />
-            </div>
-            <div class="flex gap-3">
-              <button class="btn-primary flex-1" :disabled="savingBulk" @click="createBulk">
-                {{ savingBulk ? t('common.saving') : `${bulkQty} Tier(e) anlegen` }}
-              </button>
-              <button class="btn-secondary" @click="showBulkModal = false">{{ t('common.cancel') }}</button>
-            </div>
+    <!-- Bulk offspring -->
+    <Modal :open="showBulkModal" :title="t('breeding.addOffspring')" icon="hatch" @close="showBulkModal = false">
+      <p v-if="bulkEvent" class="text-sm text-fg-muted mb-4">
+        {{ bulkEvent.female.name }} × {{ bulkEvent.male.name }} · <span class="italic">{{ bulkEvent.female.species }}</span>
+      </p>
+      <div v-if="bulkError" class="alert-error mb-4"><Icon name="alert" :size="16" />{{ bulkError }}</div>
+      <div class="space-y-4">
+        <div>
+          <label>{{ t('breeding.quantity') }}</label>
+          <input type="number" v-model.number="bulkQty" min="1" max="500" class="num" />
+          <p class="hint">{{ t('breeding.bulk_hint') }}</p>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label>{{ t('animal.dob') }}</label><input type="date" v-model="bulkDob" /></div>
+          <div>
+            <label>{{ t('animal.sex') }}</label>
+            <select v-model="bulkSex">
+              <option value="unknown">{{ t('animal.sexes.unknown') }}</option>
+              <option value="male">{{ t('animal.sexes.male') }}</option>
+              <option value="female">{{ t('animal.sexes.female') }}</option>
+            </select>
           </div>
         </div>
+        <div><label>{{ t('breeding.notes') }}</label><textarea v-model="bulkNotes" rows="2" :placeholder="t('breeding.bulk_notes_ph')" /></div>
       </div>
-    </Teleport>
+      <template #footer>
+        <button class="btn-ghost" @click="showBulkModal = false">{{ t('common.cancel') }}</button>
+        <button class="btn-primary" :disabled="savingBulk" @click="createBulk">
+          {{ savingBulk ? t('common.saving') : t('breeding.bulk_create', { n: bulkQty }) }}
+        </button>
+      </template>
+    </Modal>
   </div>
 </template>

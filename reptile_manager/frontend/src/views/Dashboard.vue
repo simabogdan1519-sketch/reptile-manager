@@ -1,222 +1,166 @@
 <script setup>
-import { useI18n } from '@/i18n'
-import { ref, onMounted } from 'vue'
-import { dashboard } from '@/api'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { mediaUrl } from '@/utils/media'
+import { useI18n } from '@/i18n'
+import { dashboard } from '@/api'
+import { useAuthStore } from '@/stores/auth'
+import { fmtRelative, foodLabel, sexNotation, sexBadge } from '@/utils/format'
+import { languages, locale } from '@/i18n'
+import PageHeader from '@/components/PageHeader.vue'
+import Icon from '@/components/Icon.vue'
+import AnimalAvatar from '@/components/AnimalAvatar.vue'
+import EmptyState from '@/components/EmptyState.vue'
 
 const { t } = useI18n()
-
 const router = useRouter()
+const auth = useAuthStore()
 const stats = ref(null)
 const loading = ref(true)
-const showFeedingModal = ref(false)
 
 onMounted(async () => {
-  try {
-    const res = await dashboard.stats()
-    stats.value = res.data
-  } finally {
-    loading.value = false
-  }
+  try { stats.value = (await dashboard.stats()).data }
+  finally { loading.value = false }
 })
 
-function fmtDate(d) {
-  if (!d) return '—'
-  return new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
-}
-function fmtDateTime(d) {
-  if (!d) return '—'
-  return new Date(d).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-}
-function foodLabel(f) {
-  return [f.food_count > 1 ? `${f.food_count}×` : '', f.food_size, f.food_type].filter(Boolean).join(' ')
+const today = computed(() => new Date().toLocaleDateString(languages[locale.value].intl,
+  { weekday: 'long', day: 'numeric', month: 'long' }))
+
+const greeting = computed(() => {
+  const h = new Date().getHours()
+  const k = h < 5 ? 'evening' : h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening'
+  return t(`dashboard.greet_${k}`, { name: auth.user?.username || '' })
+})
+
+const due = computed(() => [...(stats.value?.animals_needing_feeding || [])]
+  .sort((a, b) => (b.days_since_feeding ?? 9999) - (a.days_since_feeding ?? 9999)))
+
+const activity = computed(() => {
+  if (!stats.value) return []
+  const f = stats.value.recent_feedings.map(x => ({ ...x, kind: 'feeding' }))
+  const s = stats.value.recent_sheddings.map(x => ({ ...x, kind: 'shed' }))
+  return [...f, ...s].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10)
+})
+
+function open(tile) {
+  if (tile.to) router.push(tile.to)
+  else document.getElementById('due')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-function sexNotation(sex) {
-  if (sex === 'male')   return '1.0.0'
-  if (sex === 'female') return '0.1.0'
-  return '0.0.1'
+function pct(a) {
+  if (a.days_since_feeding == null) return 100
+  return Math.min(100, Math.round((a.days_since_feeding / (a.threshold_days || 1)) * 100))
 }
 
-function sexIcon(sex) {
-  return sex === 'male' ? '♂' : sex === 'female' ? '♀' : '?'
-}
-function sexClass(sex) {
-  return sex === 'male' ? 'text-blue-400' : sex === 'female' ? 'text-pink-400' : 'text-slate-500'
-}
+const tiles = computed(() => !stats.value ? [] : [
+  { key: 'active_animals',  value: stats.value.active_animals,       icon: 'reptile', to: '/animals' },
+  { key: 'feedings_month',  value: stats.value.feedings_this_month,  icon: 'feeding', to: '/feedings' },
+  { key: 'sheddings_month', value: stats.value.sheddings_this_month, icon: 'shed',    to: '/sheddings' },
+  { key: 'not_fed',         value: stats.value.animals_not_fed_7days, icon: 'bell',   to: null, warn: stats.value.animals_not_fed_7days > 0 },
+])
 </script>
 
 <template>
   <div>
-    <h1 class="text-xl md:text-2xl font-bold text-slate-200 mb-5">{{ t('dashboard.title') }}</h1>
+    <PageHeader :eyebrow="today" :title="greeting" :subtitle="t('dashboard.subtitle')">
+      <template #actions>
+        <button class="btn-secondary" @click="router.push('/feedings?new=1')"><Icon name="feeding" :size="16" />{{ t('feeding.add') }}</button>
+        <button class="btn-primary" @click="router.push('/animals/new')"><Icon name="plus" :size="16" />{{ t('animal.add') }}</button>
+      </template>
+    </PageHeader>
 
-    <div v-if="loading" class="text-slate-500 text-center py-16">Lade…</div>
+    <div v-if="loading" class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div v-for="i in 4" :key="i" class="card h-[118px] animate-pulse" />
+    </div>
 
     <template v-else-if="stats">
-      <!-- Stat cards -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <div class="stat-card cursor-pointer hover:border-brand-500 border border-surface-600 transition-colors"
-             @click="router.push('/animals')">
-          <span class="text-2xl">🦎</span>
-          <span class="text-2xl md:text-3xl font-bold text-slate-200">{{ stats.active_animals }}</span>
-          <span class="text-xs text-slate-500">{{ t('dashboard.active_animals') }}</span>
-        </div>
-
-        <div class="stat-card cursor-pointer hover:border-brand-500 border border-surface-600 transition-colors"
-             @click="router.push('/feedings')">
-          <span class="text-2xl">🍖</span>
-          <span class="text-2xl md:text-3xl font-bold text-slate-200">{{ stats.feedings_this_month }}</span>
-          <span class="text-xs text-slate-500">{{ t('dashboard.feedings_month') }}</span>
-        </div>
-
-        <div class="stat-card cursor-pointer hover:border-brand-500 border border-surface-600 transition-colors"
-             @click="router.push('/sheddings')">
-          <span class="text-2xl">🐚</span>
-          <span class="text-2xl md:text-3xl font-bold text-slate-200">{{ stats.sheddings_this_month }}</span>
-          <span class="text-xs text-slate-500">{{ t('dashboard.sheddings_month') }}</span>
-        </div>
-
-        <!-- Clickable warning card -->
-        <div class="stat-card cursor-pointer border transition-colors"
-             :class="stats.animals_not_fed_7days > 0
-               ? 'border-yellow-600 hover:border-yellow-400 bg-yellow-900/20'
-               : 'border-surface-600 hover:border-brand-500'"
-             @click="stats.animals_not_fed_7days > 0 && (showFeedingModal = true)">
-          <span class="text-2xl">{{ stats.animals_not_fed_7days > 0 ? '⚠️' : '✅' }}</span>
-          <span class="text-2xl md:text-3xl font-bold"
-                :class="stats.animals_not_fed_7days > 0 ? 'text-yellow-400' : 'text-slate-200'">
-            {{ stats.animals_not_fed_7days }}
-          </span>
-          <span class="text-xs text-slate-500">
-            {{ stats.animals_not_fed_7days > 0 ? t('dashboard.not_fed') + ' — ' + t('dashboard.click_for_details') : t('dashboard.all_fed') }}
-          </span>
-        </div>
+      <!-- KPI tiles -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6 stagger">
+        <button v-for="tile in tiles" :key="tile.key" type="button"
+                class="card text-left group transition-all hover:-translate-y-0.5"
+                :class="tile.warn ? '!border-heat-400/40 !bg-heat-400/[0.06]' : 'hover:border-line-strong'"
+                @click="open(tile)">
+          <div class="flex items-center justify-between">
+            <span class="eyebrow" :class="tile.warn ? '!text-heat-400' : ''">{{ t('dashboard.' + tile.key) }}</span>
+            <span class="w-8 h-8 rounded-lg grid place-items-center transition-colors"
+                  :class="tile.warn ? 'bg-heat-400/15 text-heat-400' : 'bg-ink-800 text-fg-faint group-hover:text-moss-400'">
+              <Icon :name="tile.icon" :size="16" />
+            </span>
+          </div>
+          <div class="mt-4 font-display text-[40px] leading-none font-semibold num"
+               :class="tile.warn ? 'text-heat-400' : 'text-fg'">{{ tile.value }}</div>
+        </button>
       </div>
 
-      <!-- Recent activity -->
-      <div class="grid md:grid-cols-2 gap-4">
-        <!-- Recent feedings -->
-        <div class="card">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="font-semibold text-slate-200 text-sm md:text-base">{{ t('dashboard.recent_feedings') }}</h2>
-            <button class="text-xs text-brand-400 hover:text-brand-500" @click="router.push('/feedings')">{{ t('common.all') }} →</button>
-          </div>
-          <div v-if="!stats.recent_feedings.length" class="text-slate-500 text-sm">{{ t('common.unknown') }}</div>
-          <div v-for="f in stats.recent_feedings" :key="f.id"
-               class="flex items-center gap-2 py-2 border-b border-surface-600 last:border-0">
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <span class="text-sm font-medium text-slate-200 truncate">{{ f.animal_name }}</span>
-                <span :class="f.accepted ? 'badge-green' : 'badge-red'" class="text-xs">
-                  {{ f.accepted ? 'OK' : 'Abgelehnt' }}
-                </span>
-              </div>
-              <span class="text-xs text-slate-500">{{ foodLabel(f) }} · {{ fmtDate(f.date) }}</span>
+      <div class="grid lg:grid-cols-[1.45fr_1fr] gap-4 items-start stagger">
+        <!-- Feeding due -->
+        <section id="due" class="panel">
+          <div class="panel-head">
+            <div class="flex items-center gap-2.5">
+              <span class="w-2 h-2 rounded-full" :class="due.length ? 'bg-heat-400 shadow-[0_0_10px_rgb(var(--heat-400))]' : 'bg-moss-400'" />
+              <h2 class="panel-title">{{ t('dashboard.feeding_modal_title') }}</h2>
+              <span v-if="due.length" class="badge-yellow num">{{ due.length }}</span>
             </div>
+            <button class="link" @click="router.push('/feedings')">{{ t('dashboard.to_feedings') }} <Icon name="chevron" :size="14" /></button>
           </div>
-        </div>
 
-        <!-- Recent sheddings -->
-        <div class="card">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="font-semibold text-slate-200 text-sm md:text-base">{{ t('dashboard.recent_sheddings') }}</h2>
-            <button class="text-xs text-brand-400 hover:text-brand-500" @click="router.push('/sheddings')">{{ t('common.all') }} →</button>
-          </div>
-          <div v-if="!stats.recent_sheddings.length" class="text-slate-500 text-sm">{{ t('common.unknown') }}</div>
-          <div v-for="s in stats.recent_sheddings" :key="s.id"
-               class="flex items-center gap-2 py-2 border-b border-surface-600 last:border-0">
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-1.5 flex-wrap">
-                <span class="text-sm font-medium text-slate-200 truncate">{{ s.animal_name }}</span>
-                <span :class="s.complete ? 'badge-green' : 'badge-yellow'" class="text-xs">
-                  {{ s.complete ? 'Komplett' : 'Unvollständig' }}
-                </span>
+          <EmptyState v-if="!due.length" icon="check" :title="t('dashboard.all_fed')" :text="t('dashboard.all_fed_text')" />
+
+          <ul v-else class="divide-y divide-line/70">
+            <li v-for="a in due" :key="a.id"
+                class="flex items-center gap-3.5 px-5 py-3.5 cursor-pointer hover:bg-ink-850/70 transition-colors"
+                @click="router.push(`/animals/${a.id}`)">
+              <AnimalAvatar :animal="a" />
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-semibold text-fg truncate">{{ a.name }}</span>
+                  <span :class="sexBadge(a.sex)">{{ sexNotation(a.sex) }}</span>
+                </div>
+                <p class="text-xs text-fg-faint italic truncate mt-0.5">{{ a.species }}<span v-if="a.morph" class="not-italic text-moss-400/80"> · {{ a.morph }}</span></p>
+                <div class="mt-2 h-1 rounded-full bg-ink-800 overflow-hidden">
+                  <div class="h-full rounded-full bg-gradient-to-r from-heat-500 to-coral-400" :style="{ width: pct(a) + '%' }" />
+                </div>
               </div>
-              <span class="text-xs text-slate-500">{{ fmtDate(s.date) }}</span>
-            </div>
+              <div class="text-right flex-shrink-0 w-20">
+                <div class="font-display text-[22px] font-semibold num text-heat-400 leading-none">
+                  {{ a.days_since_feeding ?? '—' }}<span class="text-sm text-fg-faint ml-0.5">{{ a.days_since_feeding != null ? t('common.d') : '' }}</span>
+                </div>
+                <div class="text-[11px] text-fg-faint mt-1">{{ a.days_since_feeding == null ? t('dashboard.never_fed') : t('dashboard.threshold_n', { n: a.threshold_days }) }}</div>
+              </div>
+            </li>
+          </ul>
+        </section>
+
+        <!-- Activity -->
+        <section class="panel">
+          <div class="panel-head">
+            <h2 class="panel-title">{{ t('dashboard.activity') }}</h2>
+            <Icon name="activity" :size="16" class="text-fg-faint" />
           </div>
-        </div>
+          <EmptyState v-if="!activity.length" icon="activity" :title="t('dashboard.no_activity')" />
+          <ol v-else class="px-5 py-4 relative">
+            <li v-for="(e, i) in activity" :key="e.kind + e.id" class="relative pl-9 pb-4 last:pb-0">
+              <span v-if="i < activity.length - 1" class="absolute left-[13px] top-7 bottom-0 w-px bg-line" />
+              <span class="absolute left-0 top-0.5 w-[27px] h-[27px] rounded-lg grid place-items-center border"
+                    :class="e.kind === 'feeding'
+                      ? (e.accepted ? 'bg-moss-400/10 border-moss-400/25 text-moss-400' : 'bg-coral-500/10 border-coral-500/25 text-coral-400')
+                      : 'bg-lagoon-400/10 border-lagoon-400/25 text-lagoon-400'">
+                <Icon :name="e.kind === 'feeding' ? 'feeding' : 'shed'" :size="14" />
+              </span>
+              <div class="flex items-baseline justify-between gap-3">
+                <p class="text-[13.5px] text-fg truncate">
+                  <span class="font-semibold">{{ e.animal_name }}</span>
+                  <span class="text-fg-muted">
+                    <template v-if="e.kind === 'feeding'"> · {{ foodLabel(e) }}</template>
+                    <template v-else> · {{ e.complete ? t('shedding.complete_label') : t('shedding.incomplete_label') }}</template>
+                  </span>
+                </p>
+                <span class="text-[11.5px] text-fg-faint whitespace-nowrap">{{ fmtRelative(e.date) }}</span>
+              </div>
+              <p v-if="e.kind === 'feeding' && !e.accepted" class="text-xs text-coral-400 mt-0.5">{{ t('feeding.rejected_label') }}</p>
+            </li>
+          </ol>
+        </section>
       </div>
     </template>
-
-    <!-- ── Feeding Alert Modal ─────────────────────────────────────────────── -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="showFeedingModal"
-             class="fixed inset-0 z-50 flex items-end md:items-center justify-center p-4"
-             @click.self="showFeedingModal = false">
-          <!-- Backdrop -->
-          <div class="absolute inset-0 bg-black/70" @click="showFeedingModal = false" />
-
-          <!-- Modal -->
-          <div class="relative bg-surface-700 rounded-2xl border border-yellow-700 w-full max-w-md
-                      max-h-[80vh] flex flex-col shadow-2xl">
-            <!-- Header -->
-            <div class="flex items-center justify-between p-5 border-b border-surface-600">
-              <div class="flex items-center gap-2">
-                <span class="text-xl">⚠️</span>
-                <h2 class="font-semibold text-slate-200">{{ t('dashboard.feeding_modal_title') }}</h2>
-              </div>
-              <button @click="showFeedingModal = false"
-                      class="text-slate-500 hover:text-slate-200 text-xl w-8 h-8 flex items-center justify-center">
-                ✕
-              </button>
-            </div>
-
-            <!-- Animal list -->
-            <div class="overflow-y-auto flex-1 p-2">
-              <div v-for="a in stats?.animals_needing_feeding" :key="a.id"
-                   class="flex items-center gap-3 p-3 rounded-xl hover:bg-surface-600 cursor-pointer transition-colors"
-                   @click="showFeedingModal = false; router.push(`/animals/${a.id}`)">
-                <!-- Avatar -->
-                <div class="w-12 h-12 rounded-xl bg-surface-600 flex-shrink-0 overflow-hidden
-                            flex items-center justify-center border border-surface-500">
-                  <img v-if="a.photo_url" :src="mediaUrl(a.photo_url)" :alt="a.name"
-                       class="w-full h-full object-cover" />
-                  <span v-else class="text-2xl opacity-40">🦎</span>
-                </div>
-
-                <!-- Info -->
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-1.5">
-                    <span class="font-medium text-slate-200 truncate">{{ a.name }}</span>
-                    <span :class="sexClass(a.sex)" class="text-sm font-bold flex-shrink-0">
-                      {{ sexNotation(a.sex) }}
-                    </span>
-                  </div>
-                  <p class="text-xs text-slate-500 italic truncate">{{ a.species }}</p>
-                  <p v-if="a.morph" class="text-xs text-brand-400 truncate">{{ a.morph }}</p>
-                </div>
-
-                <!-- Days indicator -->
-                <div class="flex-shrink-0 text-right">
-                  <div class="text-lg font-bold text-yellow-400">
-                    {{ a.days_since_feeding !== null && a.days_since_feeding !== undefined
-                       ? a.days_since_feeding + 'd'
-                       : '—' }}
-                  </div>
-                  <div class="text-xs text-slate-500">{{ t('dashboard.days_no_food') }}</div>
-                  <div class="text-xs text-slate-600">{{ t('dashboard.threshold') }}: {{ a.threshold_days }}d</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Footer -->
-            <div class="p-4 border-t border-surface-600">
-              <button class="btn-primary w-full justify-center"
-                      @click="showFeedingModal = false; router.push('/feedings')">
-                {{ t('dashboard.to_feedings') }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
   </div>
 </template>
-
-<style scoped>
-.modal-enter-active, .modal-leave-active { transition: opacity 0.2s; }
-.modal-enter-from, .modal-leave-to { opacity: 0; }
-</style>

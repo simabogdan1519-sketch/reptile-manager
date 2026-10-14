@@ -1,166 +1,98 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, h, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from '@/i18n'
 import { animals as animalsApi } from '@/api'
+import { sexNotation, sexBadge } from '@/utils/format'
+import PageHeader from '@/components/PageHeader.vue'
+import EmptyState from '@/components/EmptyState.vue'
 
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const treeData = ref(null)
 const loading = ref(true)
 
 onMounted(async () => {
-  const res = await animalsApi.tree(route.params.id)
-  treeData.value = res.data
-  loading.value = false
+  try { treeData.value = (await animalsApi.tree(route.params.id)).data }
+  finally { loading.value = false }
 })
 
-function sexIcon(sex) {
-  return sex === 'male' ? '1.0.0' : sex === 'female' ? '0.1.0' : '?'
+// Small functional component for a tree node
+const Node = (props) => {
+  const a = props.animal
+  if (!a) {
+    return h('div', { class: 'node node-empty' }, [h('span', { class: 'eyebrow' }, props.role ? t('tree.' + props.role) : '—'), h('span', { class: 'text-fg-faint text-sm mt-1' }, t('tree.unknown'))])
+  }
+  return h('button', {
+    class: ['node', props.main ? 'node-main' : '', a.sex === 'female' ? 'hover:border-female/50' : a.sex === 'male' ? 'hover:border-male/50' : ''],
+    onClick: () => !props.main && router.push(`/animals/${a.id}`),
+  }, [
+    h('div', { class: 'flex items-center justify-between gap-2 w-full' }, [
+      h('span', { class: 'eyebrow' }, props.role ? t('tree.' + props.role) : (a.tracking_id ? '#' + a.tracking_id : '')),
+      h('span', { class: sexBadge(a.sex) }, sexNotation(a.sex)),
+    ]),
+    h('span', { class: ['font-display font-semibold text-fg truncate w-full text-left mt-1.5', props.main ? 'text-[20px]' : 'text-[15px]'] }, a.name),
+    h('span', { class: 'text-[11.5px] text-fg-faint italic truncate w-full text-left' }, a.morph || a.species),
+  ])
 }
-function sexClass(sex) {
-  return sex === 'male' ? 'text-blue-400' : sex === 'female' ? 'text-pink-400' : 'text-slate-500'
-}
-
-function hasParents(node) {
-  return node?.mother || node?.father
-}
+Node.props = ['animal', 'role', 'main']
 </script>
 
 <template>
   <div>
-    <div class="flex items-center gap-3 mb-6">
-      <button class="btn-secondary btn-sm" @click="router.back()">← Zurück</button>
-      <h1 class="text-2xl font-bold text-slate-200">Stammbaum</h1>
-    </div>
+    <PageHeader :eyebrow="treeData?.animal?.name" :title="t('animal.tree')" back @back="router.back()" />
 
-    <div v-if="loading" class="text-slate-500 text-center py-16">Lade…</div>
+    <div v-if="loading" class="card h-80 animate-pulse" />
 
-    <div v-else-if="treeData" class="overflow-x-auto pb-6">
-
-      <!-- Legend -->
-      <div class="flex gap-4 mb-6 text-xs text-slate-500">
-        <span class="flex items-center gap-1"><span class="font-mono text-xs text-slate-400">0.1.0</span></span>
-        <span class="flex items-center gap-1"><span class="font-mono text-xs text-slate-400">1.0.0</span></span>
-        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-brand-500 inline-block"></span> Ausgewähltes Tier</span>
-      </div>
-
-      <!-- Tree structure -->
-      <div class="flex flex-col items-center">
-
-        <!-- Grandparents row -->
-        <div v-if="hasParents(treeData.animal.mother) || hasParents(treeData.animal.father)" class="flex gap-24 mb-2">
-          <!-- Maternal grandparents -->
-          <div class="flex gap-8">
-            <div v-if="treeData.animal.mother?.mother" class="tree-node bg-surface-700">
-              <div class="flex items-center gap-1">
-                <span :class="sexClass(treeData.animal.mother.mother.sex)" class="font-bold">{{ sexIcon(treeData.animal.mother.mother.sex) }}</span>
-                <span class="font-medium text-slate-200">{{ treeData.animal.mother.mother.name }}</span>
-              </div>
-              <span class="text-xs text-slate-500 italic truncate max-w-[120px]">{{ treeData.animal.mother.mother.morph ?? treeData.animal.mother.mother.species }}</span>
-            </div>
-            <div v-else class="tree-node-empty"></div>
-            <div v-if="treeData.animal.mother?.father" class="tree-node bg-surface-700">
-              <div class="flex items-center gap-1">
-                <span :class="sexClass(treeData.animal.mother.father.sex)" class="font-bold">{{ sexIcon(treeData.animal.mother.father.sex) }}</span>
-                <span class="font-medium text-slate-200">{{ treeData.animal.mother.father.name }}</span>
-              </div>
-              <span class="text-xs text-slate-500 italic truncate max-w-[120px]">{{ treeData.animal.mother.father.morph ?? treeData.animal.mother.father.species }}</span>
-            </div>
-            <div v-else class="tree-node-empty"></div>
-          </div>
-          <!-- Paternal grandparents -->
-          <div class="flex gap-8">
-            <div v-if="treeData.animal.father?.mother" class="tree-node bg-surface-700">
-              <div class="flex items-center gap-1">
-                <span :class="sexClass(treeData.animal.father.mother.sex)" class="font-bold">{{ sexIcon(treeData.animal.father.mother.sex) }}</span>
-                <span class="font-medium text-slate-200">{{ treeData.animal.father.mother.name }}</span>
-              </div>
-              <span class="text-xs text-slate-500 italic truncate max-w-[120px]">{{ treeData.animal.father.mother.morph ?? treeData.animal.father.mother.species }}</span>
-            </div>
-            <div v-else class="tree-node-empty"></div>
-            <div v-if="treeData.animal.father?.father" class="tree-node bg-surface-700">
-              <div class="flex items-center gap-1">
-                <span :class="sexClass(treeData.animal.father.father.sex)" class="font-bold">{{ sexIcon(treeData.animal.father.father.sex) }}</span>
-                <span class="font-medium text-slate-200">{{ treeData.animal.father.father.name }}</span>
-              </div>
-              <span class="text-xs text-slate-500 italic truncate max-w-[120px]">{{ treeData.animal.father.father.morph ?? treeData.animal.father.father.species }}</span>
-            </div>
-            <div v-else class="tree-node-empty"></div>
-          </div>
+    <div v-else-if="treeData" class="card overflow-x-auto">
+      <div class="min-w-[720px] py-4 flex flex-col items-center">
+        <!-- Grandparents -->
+        <div class="grid grid-cols-4 gap-4 w-full">
+          <Node :animal="treeData.animal.mother?.mother" role="grandmother" />
+          <Node :animal="treeData.animal.mother?.father" role="grandfather" />
+          <Node :animal="treeData.animal.father?.mother" role="grandmother" />
+          <Node :animal="treeData.animal.father?.father" role="grandfather" />
         </div>
+        <div class="grid grid-cols-2 gap-4 w-full"><div class="bracket" /><div class="bracket" /></div>
 
-        <!-- Connector line to parents -->
-        <div v-if="treeData.animal.mother || treeData.animal.father"
-             class="w-px h-6 bg-surface-500 mb-0"></div>
-
-        <!-- Parents row -->
-        <div v-if="treeData.animal.mother || treeData.animal.father"
-             class="flex gap-16 mb-0 relative">
-          <div class="absolute top-1/2 left-0 right-0 h-px bg-surface-500 -translate-y-1/2"></div>
-
-          <div v-if="treeData.animal.mother"
-               class="tree-node bg-surface-700 cursor-pointer hover:border-pink-400 z-10"
-               @click="router.push(`/animals/${treeData.animal.mother.id}`)">
-            <div class="flex items-center gap-1">
-              <span class="text-pink-400 font-bold">♀</span>
-              <span class="font-medium text-slate-200">{{ treeData.animal.mother.name }}</span>
-            </div>
-            <span class="text-xs text-slate-500 italic truncate max-w-[120px]">{{ treeData.animal.mother.morph ?? treeData.animal.mother.species }}</span>
-          </div>
-          <div v-else class="tree-node-empty z-10"></div>
-
-          <div v-if="treeData.animal.father"
-               class="tree-node bg-surface-700 cursor-pointer hover:border-blue-400 z-10"
-               @click="router.push(`/animals/${treeData.animal.father.id}`)">
-            <div class="flex items-center gap-1">
-              <span class="text-blue-400 font-bold">♂</span>
-              <span class="font-medium text-slate-200">{{ treeData.animal.father.name }}</span>
-            </div>
-            <span class="text-xs text-slate-500 italic truncate max-w-[120px]">{{ treeData.animal.father.morph ?? treeData.animal.father.species }}</span>
-          </div>
-          <div v-else class="tree-node-empty z-10"></div>
+        <!-- Parents -->
+        <div class="grid grid-cols-2 gap-4 w-full">
+          <div class="flex justify-center"><div class="w-[62%]"><Node :animal="treeData.animal.mother" role="mother" /></div></div>
+          <div class="flex justify-center"><div class="w-[62%]"><Node :animal="treeData.animal.father" role="father" /></div></div>
         </div>
+        <div class="w-full"><div class="bracket" /></div>
 
-        <!-- Connector to subject -->
-        <div class="w-px h-6 bg-surface-500"></div>
-
-        <!-- Subject (this animal) -->
-        <div class="tree-node !border-brand-500 !bg-brand-500/10 !border-2 min-w-[180px]">
-          <div class="flex items-center gap-1">
-            <span :class="sexClass(treeData.animal.sex)" class="font-bold text-lg">{{ sexIcon(treeData.animal.sex) }}</span>
-            <span class="font-bold text-slate-100 text-lg">{{ treeData.animal.name }}</span>
-          </div>
-          <span class="text-xs text-brand-400 italic">{{ treeData.animal.morph ?? treeData.animal.species }}</span>
-        </div>
+        <!-- Subject -->
+        <div class="w-[300px]"><Node :animal="treeData.animal" main /></div>
 
         <!-- Offspring -->
         <template v-if="treeData.offspring.length">
-          <div class="w-px h-6 bg-surface-500"></div>
-          <div class="text-xs text-slate-500 mb-2">Nachzucht ({{ treeData.offspring.length }})</div>
-          <div class="flex flex-wrap gap-3 justify-center max-w-2xl">
-            <div
-              v-for="child in treeData.offspring" :key="child.id"
-              class="tree-node bg-surface-700 cursor-pointer hover:border-brand-500"
-              @click="router.push(`/animals/${child.id}`)"
-            >
-              <div class="flex items-center gap-1">
-                <span :class="sexClass(child.sex)" class="font-bold">{{ sexIcon(child.sex) }}</span>
-                <span class="font-medium text-slate-200">{{ child.name }}</span>
-              </div>
-              <span class="text-xs text-slate-500 italic truncate max-w-[120px]">{{ child.morph ?? child.species }}</span>
-            </div>
+          <div class="w-px h-8 bg-line-strong" />
+          <p class="eyebrow mb-3">{{ t('tree.offspring', { n: treeData.offspring.length }) }}</p>
+          <div class="flex flex-wrap gap-3 justify-center max-w-3xl">
+            <div v-for="child in treeData.offspring" :key="child.id" class="w-[180px]"><Node :animal="child" /></div>
           </div>
         </template>
       </div>
     </div>
+
+    <div v-else class="card"><EmptyState icon="tree" :title="t('common.not_found')" /></div>
   </div>
 </template>
 
 <style scoped>
-.tree-node {
-  @apply flex flex-col px-3 py-2 rounded-lg border border-surface-500 transition-colors min-w-[130px];
+:deep(.node) {
+  @apply w-full min-h-[86px] flex flex-col items-start rounded-xl border border-line bg-ink-850 px-3.5 py-3 transition-all min-w-0;
 }
-.tree-node-empty {
-  @apply w-[130px] min-w-[130px];
+:deep(button.node:not(.node-main)) { @apply hover:-translate-y-0.5 cursor-pointer; }
+:deep(.node-empty) { @apply border-dashed bg-transparent; }
+:deep(.node-main) {
+  @apply border-moss-400/60 bg-moss-400/[0.07] px-5 py-4 cursor-default;
+  box-shadow: 0 0 0 4px rgb(var(--moss-400) / .06), 0 20px 40px -20px rgb(var(--moss-400) / .4);
 }
+.bracket {
+  @apply relative h-6 mx-[25%] mb-5 border-b border-x border-line-strong rounded-b-xl;
+}
+.bracket::after { content: ""; @apply absolute left-1/2 top-full w-px h-5 bg-line-strong; }
 </style>
