@@ -21,6 +21,7 @@ const routes = [
       { path: 'breeding',  component: () => import('@/views/Breeding.vue') },
       { path: 'export',    component: () => import('@/views/Export.vue') },
       { path: 'settings',  component: () => import('@/views/Settings.vue') },
+      { path: 'users',     component: () => import('@/views/UsersGroups.vue'), meta: { admin: true } },
     ]
   }
 ]
@@ -35,6 +36,8 @@ router.beforeEach(async (to) => {
   if (to.meta.public) return true
   if (!authStore.isLoggedIn) return '/login'
   if (!authStore.user) await authStore.fetchMe()
+  if (!authStore.isLoggedIn) return '/login'
+  if (to.meta.admin && !authStore.isAdmin) return '/dashboard'
   return true
 })
 
