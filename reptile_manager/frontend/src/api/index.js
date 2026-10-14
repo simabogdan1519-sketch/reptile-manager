@@ -54,8 +54,14 @@ export const auth = {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     })
   },
-  me: () => api.get('/auth/me')
+  me: () => api.get('/auth/me'),
+  changePassword: (current_password, new_password) =>
+    api.post('/auth/change-password', { current_password, new_password }),
 }
+
+// ── Users & groups (admin) ────────────────────────────────────────────────────
+export const users  = { list: () => api.get('/users'),  create: d => api.post('/users', d),  update: (id,d) => api.put(`/users/${id}`, d),  delete: id => api.delete(`/users/${id}`) }
+export const groups = { list: () => api.get('/groups'), create: d => api.post('/groups', d), update: (id,d) => api.put(`/groups/${id}`, d), delete: id => api.delete(`/groups/${id}`) }
 
 export const dashboard  = { stats: () => api.get('/dashboard') }
 
