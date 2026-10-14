@@ -1,6 +1,28 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { ha } from '@/api'
+import { ha, auth as authApi } from '@/api'
+import { useAuthStore } from '@/stores/auth'
+import { useI18n } from '@/i18n'
+
+const auth = useAuthStore()
+const { t } = useI18n()
+const pw = ref({ current: '', next: '' })
+const pwMsg = ref('')
+const pwErr = ref('')
+const pwSaving = ref(false)
+
+async function changePassword() {
+  pwMsg.value = ''; pwErr.value = ''; pwSaving.value = true
+  try {
+    await authApi.changePassword(pw.value.current, pw.value.next)
+    pw.value = { current: '', next: '' }
+    pwMsg.value = t('access.password_changed')
+  } catch (e) {
+    pwErr.value = e.response?.data?.detail || e.message
+  } finally {
+    pwSaving.value = false
+  }
+}
 
 const config = ref(null)
 const haToken = ref('')
@@ -68,6 +90,22 @@ async function syncNow() {
     <div v-if="loading" class="text-slate-500 text-center py-16">Lade…</div>
 
     <div v-else-if="config" class="space-y-6">
+
+      <!-- Own password -->
+      <div class="card">
+        <h2 class="font-semibold text-slate-200 mb-3">🔑 {{ t('access.change_password') }}</h2>
+        <form class="grid sm:grid-cols-2 gap-4" @submit.prevent="changePassword">
+          <div><label>{{ t('access.current_password') }}</label><input type="password" v-model="pw.current" required autocomplete="current-password" /></div>
+          <div><label>{{ t('access.new_password') }}</label><input type="password" v-model="pw.next" required minlength="6" autocomplete="new-password" /></div>
+          <div class="sm:col-span-2 flex items-center gap-3">
+            <button class="btn-primary btn-sm" :disabled="pwSaving">{{ pwSaving ? t('common.saving') : t('common.save') }}</button>
+            <span v-if="pwMsg" class="text-sm text-brand-400">✓ {{ pwMsg }}</span>
+            <span v-if="pwErr" class="text-sm text-red-400">⚠ {{ pwErr }}</span>
+          </div>
+        </form>
+      </div>
+
+      <template v-if="auth.isAdmin">
 
       <!-- API URL Info -->
       <div class="card border border-surface-600">
@@ -249,6 +287,8 @@ automation:
           </div>
         </div>
       </div>
+
+      </template>
 
       <!-- About -->
       <div class="card">

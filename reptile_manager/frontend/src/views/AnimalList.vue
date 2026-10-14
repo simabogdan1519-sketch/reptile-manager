@@ -1,9 +1,9 @@
 <script setup>
 import { useI18n } from '@/i18n'
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { mediaUrl } from '@/utils/media'
 import { useRouter } from 'vue-router'
-import { animals as animalsApi } from '@/api'
+import { animals as animalsApi, groups as groupsApi } from '@/api'
 
 const { t } = useI18n()
 
@@ -12,6 +12,13 @@ const list = ref([])
 const search = ref('')
 const showInactive = ref(false)
 const loading = ref(true)
+const groupList = ref([])
+const groupFilter = ref('all')   // 'all' | 'none' | <id>
+const filtered = computed(() => {
+  if (groupFilter.value === 'all')  return list.value
+  if (groupFilter.value === 'none') return list.value.filter(a => !a.group_id)
+  return list.value.filter(a => a.group_id === groupFilter.value)
+})
 
 async function load() {
   loading.value = true
@@ -23,7 +30,10 @@ async function load() {
   }
 }
 
-onMounted(load)
+onMounted(async () => {
+  load()
+  try { groupList.value = (await groupsApi.list()).data } catch { /* non-critical */ }
+})
 watch([search, showInactive], load)
 
 
@@ -64,13 +74,19 @@ async function deleteAnimal(id) {
     </div>
 
     <!-- Search -->
-    <div class="mb-6">
-      <input v-model="search" type="search" placeholder="Suche nach Name, Art, Morph…" />
+    <div class="mb-6 flex flex-col sm:flex-row gap-3">
+      <input v-model="search" type="search" placeholder="Suche nach Name, Art, Morph…" class="flex-1" />
+      <select v-if="groupList.length > 1 || (groupList.length && list.some(a => !a.group_id))"
+              v-model="groupFilter" class="sm:w-56">
+        <option value="all">👥 {{ t('access.all_groups') }}</option>
+        <option v-for="g in groupList" :key="g.id" :value="g.id">{{ g.name }}</option>
+        <option v-if="list.some(a => !a.group_id)" value="none">{{ t('access.unassigned') }}</option>
+      </select>
     </div>
 
     <div v-if="loading" class="text-slate-500 text-center py-16">Lade…</div>
 
-    <div v-else-if="!list.length" class="text-center py-16 text-slate-500">
+    <div v-else-if="!filtered.length" class="text-center py-16 text-slate-500">
       <div class="text-4xl mb-3">🦎</div>
       <p>{{ t('animal.noAnimals') }}</p>
       <button class="btn-primary mt-4" @click="router.push('/animals/new')">{{ t('animal.add') }}</button>
@@ -79,7 +95,7 @@ async function deleteAnimal(id) {
     <!-- Grid -->
     <div v-else class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
       <div
-        v-for="a in list"
+        v-for="a in filtered"
         :key="a.id"
         class="card hover:border-brand-500 border border-surface-600 transition-all cursor-pointer group"
         @click="router.push(`/animals/${a.id}`)"
@@ -99,6 +115,8 @@ async function deleteAnimal(id) {
             </div>
             <p class="text-xs text-slate-500 italic truncate">{{ a.species }}</p>
             <p v-if="a.morph" class="text-xs text-brand-400 truncate">{{ a.morph }}</p>
+            <span v-if="a.group_name" class="badge-blue mt-1 max-w-full truncate">👥 {{ a.group_name }}</span>
+            <span v-else-if="groupList.length" class="badge-gray mt-1">{{ t('access.unassigned') }}</span>
           </div>
           <span v-if="!a.is_active" class="badge-gray ml-2 flex-shrink-0">Inaktiv</span>
         </div>

@@ -132,6 +132,7 @@ function sexNotation(sex) {
           <h1 class="text-2xl font-bold text-slate-200">{{ animal.name }}</h1>
           <span class="badge-gray">{{ sexNotation(animal.sex) }}</span>
           <span v-if="!animal.is_active" class="badge-red">Inaktiv</span>
+          <span v-if="animal.group_name" class="badge-blue">👥 {{ animal.group_name }}</span>
         </div>
         <p class="text-slate-400 italic">{{ animal.species }}<span v-if="animal.common_name"> · {{ animal.common_name }}</span></p>
         <p v-if="animal.morph" class="text-brand-400 text-sm">{{ animal.morph }}</p>

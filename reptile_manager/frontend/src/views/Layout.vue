@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useI18n, setLocale, languages } from '@/i18n'
@@ -21,7 +21,7 @@ onMounted(() => { checkMobile(); window.addEventListener('resize', checkMobile) 
 onUnmounted(() => window.removeEventListener('resize', checkMobile))
 router.afterEach(() => { if (isMobile.value) sidebarOpen.value = false })
 
-const navItems = [
+const baseNavItems = [
   { to: '/dashboard', icon: '📊', key: 'nav.dashboard' },
   { to: '/animals',   icon: '🦎', key: 'nav.animals' },
   { to: '/feedings',  icon: '🍖', key: 'nav.feedings' },
@@ -30,6 +30,9 @@ const navItems = [
   { to: '/export',    icon: '📜', key: 'nav.herkunftsnachweis' },
   { to: '/settings',  icon: '⚙️', key: 'nav.settings' },
 ]
+const navItems = computed(() => auth.isAdmin
+  ? [...baseNavItems.slice(0, -1), { to: '/users', icon: '👥', key: 'access.nav' }, baseNavItems.at(-1)]
+  : baseNavItems)
 
 function logout() {
   auth.logout()

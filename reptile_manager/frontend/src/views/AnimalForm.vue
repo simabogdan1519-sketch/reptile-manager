@@ -2,12 +2,15 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from '@/i18n'
-import { animals as animalsApi } from '@/api'
+import { animals as animalsApi, groups as groupsApi } from '@/api'
+import { useAuthStore } from '@/stores/auth'
 import { mediaUrl } from '@/utils/media'
 
 const route  = useRoute()
 const router = useRouter()
 const { t }  = useI18n()
+const auth   = useAuthStore()
+const groupOptions = ref([])
 
 const isEdit  = computed(() => !!route.params.id && route.params.id !== 'new')
 const loading = ref(false)
@@ -27,6 +30,7 @@ const form = ref({
   feeding_reminder_enabled: true, feeding_reminder_days: null,
   temp_day_c: '', temp_night_c: '', humidity_min: '', humidity_max: '',
   terrarium_size: '', substrate: '', uv_required: null, lighting_hours: '',
+  group_id: null,
 })
 
 const parentOptions = computed(() => {
@@ -39,6 +43,11 @@ const isUploadedPhoto = computed(() =>
 )
 
 onMounted(async () => {
+  try {
+    groupOptions.value = (await groupsApi.list()).data
+    if (!isEdit.value && !auth.isAdmin && groupOptions.value.length === 1)
+      form.value.group_id = groupOptions.value[0].id
+  } catch { /* non-critical */ }
   try {
     const res = await animalsApi.list({ active_only: false, limit: 500 })
     allAnimals.value = res.data
@@ -180,6 +189,18 @@ async function save() {
             </button>
           </div>
         </div>
+      </div>
+
+      <!-- Access group -->
+      <div v-if="groupOptions.length || auth.isAdmin">
+        <label>👥 {{ t('access.group') }}{{ auth.isAdmin ? '' : ' *' }}</label>
+        <select v-model="form.group_id" :required="!auth.isAdmin">
+          <option :value="null" :disabled="!auth.isAdmin">
+            {{ auth.isAdmin ? t('access.no_group') : t('access.choose_group') }}
+          </option>
+          <option v-for="g in groupOptions" :key="g.id" :value="g.id">{{ g.name }}</option>
+        </select>
+        <p class="text-xs text-slate-600 mt-1">{{ t('access.group_hint') }}</p>
       </div>
 
       <hr class="border-surface-500" />
