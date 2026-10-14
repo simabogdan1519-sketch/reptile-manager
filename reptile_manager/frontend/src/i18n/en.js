@@ -1,5 +1,14 @@
 export default {
+  pwa: {
+    title: 'Reptile Manager app',
+    desc: 'Install it on your phone: own icon, full screen, opens instantly. Everything you log is synced to Home Assistant.',
+    installed: 'Installed — you are using the app.',
+    install: 'Install app',
+    manual: 'In Chrome: menu ⋮ → Install app / Add to home screen.',
+    offline: 'You are offline — changes cannot be saved until the connection is back.',
+  },
   nav: {
+    more: 'More',
     dashboard: 'Dashboard', animals: 'Animals', feedings: 'Feedings',
     sheddings: 'Sheds', breeding: 'Breeding', settings: 'Settings',
     herkunftsnachweis: 'Certificates & export',
@@ -164,6 +173,11 @@ export default {
     empty_text: 'Record a pairing to track dates, clutches and offspring.',
   },
   settings: {
+    entity_sync: 'Sync to Home Assistant',
+    entity_sync_desc: 'Every animal, feeding, shed and edit is pushed to HA automatically as sensor entities.',
+    entity_sync_hint: 'Entities: <code>sensor.reptile_&lt;id&gt;</code> per animal (state = days since feeding, attributes = all details), plus <code>sensor.reptile_manager_feeding_due</code>, <code>…_active_animals</code> and <code>…_feedings_today</code>. Events <code>reptile_feeding</code>, <code>reptile_shedding</code>, <code>reptile_breeding</code> can trigger automations. As an add-on no token is needed.',
+    sync_state_ok: 'Synced', sync_state_err: 'Error', sync_state_idle: 'Waiting',
+    sync_conn: 'Connection', sync_entities: 'Entities', sync_last: 'Last sync',
     title: 'Settings', eyebrow: 'Configuration',
     sec_account: 'Account', sec_breeder: 'Breeder profile', sec_ha: 'Home Assistant',
     sec_integration: 'Sensors & webhooks', sec_about: 'About',
