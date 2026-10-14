@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from .. import models, schemas, auth
 from ..database import get_db
+from ..access import scope_breeding, check_breeding, get_animal_or_404
 from ..ha_client import notify_ha
 
 router = APIRouter()
@@ -32,7 +33,7 @@ def list_breeding(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    q = db.query(models.BreedingEvent)
+    q = scope_breeding(db.query(models.BreedingEvent), db, current_user)
     if female_id:
         q = q.filter(models.BreedingEvent.female_id == female_id)
     if male_id:
@@ -47,12 +48,8 @@ async def create_breeding(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    female = db.query(models.Animal).filter(models.Animal.id == data.female_id).first()
-    male = db.query(models.Animal).filter(models.Animal.id == data.male_id).first()
-    if not female:
-        raise HTTPException(404, "Female animal not found")
-    if not male:
-        raise HTTPException(404, "Male animal not found")
+    female = get_animal_or_404(db, data.female_id, current_user)
+    male = get_animal_or_404(db, data.male_id, current_user)
 
     event = models.BreedingEvent(**data.model_dump())
     db.add(event)
@@ -79,9 +76,8 @@ def get_breeding(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    event = db.query(models.BreedingEvent).filter(models.BreedingEvent.id == event_id).first()
-    if not event:
-        raise HTTPException(404, "Breeding event not found")
+    event = check_breeding(
+        db.query(models.BreedingEvent).filter(models.BreedingEvent.id == event_id).first(), db, current_user)
     return _enrich(event, db)
 
 @router.put("/{event_id}", response_model=schemas.BreedingEventResponse)
@@ -91,10 +87,13 @@ def update_breeding(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    event = db.query(models.BreedingEvent).filter(models.BreedingEvent.id == event_id).first()
-    if not event:
-        raise HTTPException(404, "Breeding event not found")
-    for field, value in data.model_dump(exclude_unset=True).items():
+    event = check_breeding(
+        db.query(models.BreedingEvent).filter(models.BreedingEvent.id == event_id).first(), db, current_user)
+    changes = data.model_dump(exclude_unset=True)
+    for k in ("female_id", "male_id"):
+        if changes.get(k) is not None:
+            get_animal_or_404(db, changes[k], current_user)
+    for field, value in changes.items():
         setattr(event, field, value)
     db.commit()
     db.refresh(event)
@@ -106,8 +105,7 @@ def delete_breeding(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    event = db.query(models.BreedingEvent).filter(models.BreedingEvent.id == event_id).first()
-    if not event:
-        raise HTTPException(404, "Breeding event not found")
+    event = check_breeding(
+        db.query(models.BreedingEvent).filter(models.BreedingEvent.id == event_id).first(), db, current_user)
     db.delete(event)
     db.commit()

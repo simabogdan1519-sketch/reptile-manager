@@ -18,6 +18,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from .. import models, auth
 from ..database import get_db
+from ..access import scope_animals
 
 router = APIRouter()
 
@@ -52,7 +53,7 @@ def export_inventory(
     current_user: models.User = Depends(_get_user_flex),
     token: Optional[str] = Query(None),
 ):
-    animals = (db.query(models.Animal)
+    animals = (scope_animals(db.query(models.Animal), current_user)
                .filter(models.Animal.status == "active")
                .order_by(models.Animal.species, models.Animal.name)
                .all())
@@ -169,7 +170,7 @@ def export_herkunftsnachweis(
     current_user: models.User = Depends(_get_user_flex),
 ):
     cfg  = db.query(models.HAConfig).first()
-    tiere = (db.query(models.Animal)
+    tiere = (scope_animals(db.query(models.Animal), current_user)
               .filter(models.Animal.id.in_(req.animal_ids))
               .all())
     id_map = {a.id: a for a in tiere}

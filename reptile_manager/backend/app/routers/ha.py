@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from .. import models, schemas, auth
 from ..database import get_db
+from ..access import require_admin
 from ..ha_client import test_ha_connection, push_sensor_state
 
 router = APIRouter()
@@ -24,7 +25,7 @@ def get_config(
 def update_config(
     data: schemas.HAConfigUpdate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
+    current_user: models.User = Depends(require_admin),
 ):
     cfg = db.query(models.HAConfig).first()
     if not cfg:
@@ -39,7 +40,7 @@ def update_config(
 @router.post("/test")
 async def test_connection(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
+    current_user: models.User = Depends(require_admin),
 ):
     cfg = db.query(models.HAConfig).first()
     if not cfg:
@@ -139,7 +140,7 @@ def get_sensors(db: Session = Depends(get_db)):
 @router.post("/sync")
 async def sync_to_ha(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
+    current_user: models.User = Depends(require_admin),
 ):
     """Push each animal's state as a HA sensor entity."""
     cfg = db.query(models.HAConfig).first()

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from .. import models, schemas, auth
 from ..database import get_db
+from ..access import scope_animals, get_animal_or_404, can_access_animal, resolve_group_for_write
 
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/app/uploads")
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
@@ -32,7 +33,14 @@ def _enrich_animal(animal: models.Animal, db: Session) -> schemas.AnimalResponse
     data["custom_fields"] = [schemas.CustomFieldResponse.model_validate(cf) for cf in animal.custom_fields]
     # Sync is_active from status for backwards compat
     data["is_active"] = animal.status == "active"
+    data["group_name"] = animal.group.name if animal.group else None
     return schemas.AnimalResponse(**data)
+
+
+def _check_parents(db: Session, user: models.User, mother_id, father_id):
+    for pid in (mother_id, father_id):
+        if pid is not None:
+            get_animal_or_404(db, pid, user)
 
 @router.get("", response_model=List[schemas.AnimalResponse])
 @router.get("/", response_model=List[schemas.AnimalResponse], include_in_schema=False)
@@ -44,7 +52,7 @@ def list_animals(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    q = db.query(models.Animal)
+    q = scope_animals(db.query(models.Animal), current_user)
     if status:
         q = q.filter(models.Animal.status == status)
     elif active_only:
@@ -67,6 +75,8 @@ def create_animal(
     current_user: models.User = Depends(auth.get_current_user),
 ):
     d = data.model_dump()
+    d["group_id"] = resolve_group_for_write(db, current_user, d.get("group_id"), is_create=True)
+    _check_parents(db, current_user, d.get("mother_id"), d.get("father_id"))
     if not d.get("tracking_id"):
         d["tracking_id"] = _next_tracking_id(db)
     # Sync is_active from status
@@ -85,8 +95,11 @@ def create_animals_bulk(
 ):
     """Create multiple animals at once (e.g. from a clutch/breeding event)."""
     created = []
+    group_id = resolve_group_for_write(db, current_user, data.animal_data.group_id, is_create=True)
+    _check_parents(db, current_user, data.animal_data.mother_id, data.animal_data.father_id)
     for _ in range(data.quantity):
         d = data.animal_data.model_dump()
+        d["group_id"] = group_id
         d["tracking_id"] = _next_tracking_id(db)
         d["is_active"] = d.get("status", "active") == "active"
         animal = models.Animal(**d)
@@ -102,8 +115,7 @@ def get_animal(
     animal_id: int, db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    a = db.query(models.Animal).filter(models.Animal.id == animal_id).first()
-    if not a: raise HTTPException(404, "Animal not found")
+    a = get_animal_or_404(db, animal_id, current_user)
     return _enrich_animal(a, db)
 
 @router.put("/{animal_id}", response_model=schemas.AnimalResponse)
@@ -112,9 +124,13 @@ def update_animal(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    animal = db.query(models.Animal).filter(models.Animal.id == animal_id).first()
-    if not animal: raise HTTPException(404, "Animal not found")
-    for field, value in data.model_dump(exclude_unset=True).items():
+    animal = get_animal_or_404(db, animal_id, current_user)
+    changes = data.model_dump(exclude_unset=True)
+    if "group_id" in changes:
+        changes["group_id"] = resolve_group_for_write(db, current_user, changes["group_id"],
+                                                      is_create=False, current=animal.group_id)
+    _check_parents(db, current_user, changes.get("mother_id"), changes.get("father_id"))
+    for field, value in changes.items():
         setattr(animal, field, value)
     # Sync is_active from status
     if data.status is not None:
@@ -128,8 +144,7 @@ def delete_animal(
     animal_id: int, db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    a = db.query(models.Animal).filter(models.Animal.id == animal_id).first()
-    if not a: raise HTTPException(404, "Animal not found")
+    a = get_animal_or_404(db, animal_id, current_user)
     db.delete(a)
     db.commit()
 
@@ -139,8 +154,7 @@ async def upload_photo(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    animal = db.query(models.Animal).filter(models.Animal.id == animal_id).first()
-    if not animal: raise HTTPException(404, "Animal not found")
+    animal = get_animal_or_404(db, animal_id, current_user)
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(400, f"Only images allowed")
     ext = Path(file.filename).suffix.lower() or ".jpg"
@@ -161,8 +175,7 @@ def delete_photo(
     animal_id: int, db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    animal = db.query(models.Animal).filter(models.Animal.id == animal_id).first()
-    if not animal: raise HTTPException(404, "Animal not found")
+    animal = get_animal_or_404(db, animal_id, current_user)
     if animal.photo_url:
         try:
             Path(UPLOAD_DIR + animal.photo_url.replace("/uploads", "")).unlink(missing_ok=True)
@@ -177,8 +190,7 @@ def get_animal_feedings(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    animal = db.query(models.Animal).filter(models.Animal.id == animal_id).first()
-    if not animal: raise HTTPException(404, "Animal not found")
+    animal = get_animal_or_404(db, animal_id, current_user)
     feedings = (db.query(models.Feeding).filter(models.Feeding.animal_id == animal_id)
                 .order_by(models.Feeding.date.desc()).offset(skip).limit(limit).all())
     return [schemas.FeedingResponse(**{k: v for k, v in f.__dict__.items() if not k.startswith("_")}, animal_name=animal.name)
@@ -190,8 +202,7 @@ def get_animal_sheddings(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    animal = db.query(models.Animal).filter(models.Animal.id == animal_id).first()
-    if not animal: raise HTTPException(404, "Animal not found")
+    animal = get_animal_or_404(db, animal_id, current_user)
     sheddings = (db.query(models.Shedding).filter(models.Shedding.animal_id == animal_id)
                  .order_by(models.Shedding.date.desc()).offset(skip).limit(limit).all())
     return [schemas.SheddingResponse(**{k: v for k, v in s.__dict__.items() if not k.startswith("_")}, animal_name=animal.name)
@@ -202,11 +213,10 @@ def get_family_tree(
     animal_id: int, db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    animal = db.query(models.Animal).filter(models.Animal.id == animal_id).first()
-    if not animal: raise HTTPException(404, "Animal not found")
+    animal = get_animal_or_404(db, animal_id, current_user)
 
     def node(a):
-        if not a: return None
+        if not a or not can_access_animal(a, current_user): return None
         return {"id": a.id, "name": a.name, "species": a.species, "common_name": a.common_name,
                 "morph": a.morph, "sex": a.sex.value if a.sex else "unknown",
                 "photo_url": a.photo_url, "tracking_id": a.tracking_id}
@@ -223,5 +233,5 @@ def get_family_tree(
 
     maternal = db.query(models.Animal).filter(models.Animal.mother_id == animal_id).all()
     paternal = db.query(models.Animal).filter(models.Animal.father_id == animal_id).all()
-    offspring = {a.id: node(a) for a in maternal + paternal}
+    offspring = {a.id: node(a) for a in maternal + paternal if can_access_animal(a, current_user)}
     return {"animal": ancestors(animal), "offspring": list(offspring.values())}
