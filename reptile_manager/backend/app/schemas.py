@@ -83,6 +83,9 @@ class AnimalBase(BaseModel):
     uv_required:    Optional[bool]  = None
     lighting_hours: Optional[int]   = None
 
+    # Access group
+    group_id: Optional[int] = None
+
 class AnimalCreate(AnimalBase):
     pass
 
@@ -120,9 +123,11 @@ class AnimalUpdate(BaseModel):
     substrate:      Optional[str]   = None
     uv_required:    Optional[bool]  = None
     lighting_hours: Optional[int]   = None
+    group_id:       Optional[int]   = None
 
 class AnimalResponse(AnimalBase):
     id: int
+    group_name: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     custom_fields: List[CustomFieldResponse] = []
@@ -265,14 +270,58 @@ class UserCreate(BaseModel):
     email: Optional[str] = None
     password: str
 
+class GroupRef(BaseModel):
+    id: int
+    name: str
+
+    model_config = {"from_attributes": True}
+
 class UserResponse(BaseModel):
     id: int
     username: str
     email: Optional[str] = None
     is_active: bool
     is_admin: bool
+    groups: List[GroupRef] = []
 
     model_config = {"from_attributes": True}
+
+class UserAdminCreate(BaseModel):
+    username: str
+    password: str
+    email: Optional[str] = None
+    is_admin: bool = False
+    is_active: bool = True
+    group_ids: List[int] = []
+
+class UserAdminUpdate(BaseModel):
+    username: Optional[str] = None
+    password: Optional[str] = None
+    email: Optional[str] = None
+    is_admin: Optional[bool] = None
+    is_active: Optional[bool] = None
+    group_ids: Optional[List[int]] = None
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+class GroupCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    member_ids: List[int] = []
+
+class GroupUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    member_ids: Optional[List[int]] = None
+
+class GroupResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    member_ids: List[int] = []
+    animal_count: int = 0
 
 class Token(BaseModel):
     access_token: str

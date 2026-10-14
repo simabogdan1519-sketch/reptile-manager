@@ -2,7 +2,7 @@ import enum
 from datetime import datetime, timezone
 from sqlalchemy import (
     Column, Integer, String, Float, Boolean,
-    DateTime, Date, Text, ForeignKey, Enum as SAEnum
+    DateTime, Date, Text, ForeignKey, Enum as SAEnum, Table
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -71,6 +71,10 @@ class Animal(Base):
         uselist=False,
         lazy="select",
     )
+
+    # Access group (NULL = only visible to admins)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="SET NULL"), nullable=True, index=True)
+    group = relationship("Group", back_populates="animals")
 
     feedings = relationship("Feeding", back_populates="animal", cascade="all, delete-orphan")
     sheddings = relationship("Shedding", back_populates="animal", cascade="all, delete-orphan")
@@ -168,3 +172,25 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    groups = relationship("Group", secondary=lambda: user_groups, back_populates="members")
+
+
+user_groups = Table(
+    "user_groups",
+    Base.metadata,
+    Column("user_id",  Integer, ForeignKey("users.id",  ondelete="CASCADE"), primary_key=True),
+    Column("group_id", Integer, ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
+class Group(Base):
+    __tablename__ = "groups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), unique=True, nullable=False)
+    description = Column(String(300), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    members = relationship("User", secondary=user_groups, back_populates="groups")
+    animals = relationship("Animal", back_populates="group")
