@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from '@/i18n'
 import { sheddings as sheddingsApi, animals as animalsApi } from '@/api'
 import { fmtDateTime, nowLocalInput, errorMessage } from '@/utils/format'
@@ -11,12 +11,13 @@ import AnimalAvatar from '@/components/AnimalAvatar.vue'
 
 const { t } = useI18n()
 const router = useRouter()
+const route = useRoute()
 
 const list = ref([])
 const allAnimals = ref([])
 const filterAnimal = ref('')
 const loading = ref(true)
-const showForm = ref(false)
+const showForm = ref(route.query.new === '1')
 const saving = ref(false)
 const formError = ref('')
 const empty = () => ({ animal_id: '', date: nowLocalInput(), complete: true, in_one_piece: true, pre_shed_days: '', notes: '' })

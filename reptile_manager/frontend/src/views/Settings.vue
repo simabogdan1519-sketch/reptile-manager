@@ -3,7 +3,8 @@ import { ref, computed, onMounted } from 'vue'
 import { ha, auth as authApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useI18n, setLocale, languages } from '@/i18n'
-import { errorMessage } from '@/utils/format'
+import { errorMessage, fmtRelative } from '@/utils/format'
+import { canInstall, promptInstall, isStandalone } from '@/utils/pwa'
 import PageHeader from '@/components/PageHeader.vue'
 import Icon from '@/components/Icon.vue'
 import Brand from '@/components/Brand.vue'
@@ -37,10 +38,24 @@ const sections = computed(() => [
   { id: 'about', icon: 'info', label: t('settings.sec_about') },
 ])
 
+const syncStatus = ref(null)
+async function loadSyncStatus() {
+  try { syncStatus.value = (await ha.syncStatus()).data } catch { /* ignore */ }
+}
+
 onMounted(async () => {
   try { config.value = (await ha.getConfig()).data }
   finally { loading.value = false }
+  loadSyncStatus()
 })
+
+async function toggleEntitySync() {
+  config.value.entity_sync = !config.value.entity_sync
+  try {
+    config.value = (await ha.updateConfig({ entity_sync: config.value.entity_sync })).data
+    setTimeout(loadSyncStatus, 3000)
+  } catch (e) { flash(false, errorMessage(e)) }
+}
 
 function flash(ok, text) {
   notice.value = { ok, text }
@@ -87,7 +102,7 @@ async function syncNow() {
   syncing.value = true
   try { await ha.sync(); flash(true, t('settings.sync_ok')) }
   catch (e) { flash(false, t('settings.sync_failed') + ': ' + errorMessage(e)) }
-  finally { syncing.value = false }
+  finally { syncing.value = false; loadSyncStatus() }
 }
 
 const yaml = computed(() => `# ${t('settings.yaml_step1')}
@@ -161,6 +176,16 @@ const events = computed(() => [
       <div v-else class="space-y-4 min-w-0 animate-rise" :key="section">
         <!-- Account -->
         <template v-if="section === 'account'">
+          <section class="card flex flex-col sm:flex-row sm:items-center gap-4">
+            <img :src="'icons/icon-192.png'" alt="" class="w-14 h-14 rounded-2xl border border-line-strong" onerror="this.style.display='none'" />
+            <div class="flex-1 min-w-0">
+              <h2 class="panel-title">{{ t('pwa.title') }}</h2>
+              <p class="text-sm text-fg-muted mt-0.5">{{ isStandalone ? t('pwa.installed') : t('pwa.desc') }}</p>
+            </div>
+            <button v-if="canInstall" class="btn-primary" @click="promptInstall"><Icon name="download" :size="16" />{{ t('pwa.install') }}</button>
+            <span v-else-if="!isStandalone" class="text-xs text-fg-faint max-w-[220px]">{{ t('pwa.manual') }}</span>
+          </section>
+
           <section class="card">
             <h2 class="panel-title mb-1">{{ t('settings.language') }}</h2>
             <p class="text-sm text-fg-muted mb-4">{{ t('settings.languageNote') }}</p>
@@ -204,6 +229,31 @@ const events = computed(() => [
         <!-- Home Assistant -->
         <template v-else-if="section === 'ha' && config">
           <section class="card">
+            <div class="flex items-start gap-4">
+              <span class="w-11 h-11 rounded-xl bg-moss-400/10 border border-moss-400/25 text-moss-400 grid place-items-center flex-shrink-0"><Icon name="sync" :size="20" /></span>
+              <div class="flex-1 min-w-0">
+                <h2 class="panel-title">{{ t('settings.entity_sync') }}</h2>
+                <p class="text-sm text-fg-muted mt-0.5">{{ t('settings.entity_sync_desc') }}</p>
+              </div>
+              <button type="button" class="switch" :class="{ on: config.entity_sync !== false }" role="switch"
+                      :aria-checked="config.entity_sync !== false" @click="toggleEntitySync"><span /></button>
+            </div>
+            <div v-if="syncStatus" class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-5">
+              <div class="tile"><div class="eyebrow mb-1">{{ t('common.status') }}</div>
+                <div class="text-sm font-semibold flex items-center gap-1.5"
+                     :class="syncStatus.ok ? 'text-moss-400' : syncStatus.ok === false ? 'text-coral-400' : 'text-fg-muted'">
+                  <span class="dot" />{{ syncStatus.ok ? t('settings.sync_state_ok') : syncStatus.ok === false ? t('settings.sync_state_err') : t('settings.sync_state_idle') }}
+                </div></div>
+              <div class="tile"><div class="eyebrow mb-1">{{ t('settings.sync_conn') }}</div><div class="text-sm font-semibold text-fg">{{ syncStatus.mode === 'supervisor' ? 'Supervisor' : syncStatus.mode === 'token' ? 'URL + token' : '—' }}</div></div>
+              <div class="tile"><div class="eyebrow mb-1">{{ t('settings.sync_entities') }}</div><div class="text-sm font-semibold text-fg num">{{ syncStatus.entities }}</div></div>
+              <div class="tile"><div class="eyebrow mb-1">{{ t('settings.sync_last') }}</div><div class="text-sm font-semibold text-fg">{{ syncStatus.last_sync ? fmtRelative(syncStatus.last_sync) : '—' }}</div></div>
+            </div>
+            <div v-if="syncStatus?.error && syncStatus.error !== 'disabled'" class="alert-error mt-3"><Icon name="alert" :size="16" />{{ syncStatus.error }}</div>
+            <p class="hint mt-4" v-html="t('settings.entity_sync_hint')" />
+            <button type="button" class="btn-secondary btn-sm mt-3" :disabled="syncing" @click="syncNow"><Icon name="sync" :size="14" />{{ syncing ? t('settings.syncing') : t('settings.sync') }}</button>
+          </section>
+
+          <section class="card">
             <div class="flex items-start gap-4 mb-5">
               <span class="w-11 h-11 rounded-xl bg-lagoon-400/10 border border-lagoon-400/25 text-lagoon-400 grid place-items-center flex-shrink-0"><Icon name="home" :size="20" /></span>
               <div class="flex-1">
@@ -235,7 +285,7 @@ const events = computed(() => [
               <div class="flex flex-wrap gap-2 pt-2">
                 <button type="submit" class="btn-primary" :disabled="saving">{{ saving ? t('common.saving') : t('common.save') }}</button>
                 <button type="button" class="btn-secondary" :disabled="testing" @click="testConnection"><Icon name="plug" :size="15" />{{ testing ? t('settings.testing') : t('settings.test') }}</button>
-                <button type="button" class="btn-secondary" :disabled="syncing || !config.enabled" @click="syncNow"><Icon name="sync" :size="15" />{{ syncing ? t('settings.syncing') : t('settings.sync') }}</button>
+                
               </div>
               <div v-if="testResult" :class="testResult.success ? 'alert-ok' : 'alert-error'">
                 <Icon :name="testResult.success ? 'check' : 'alert'" :size="16" />{{ testResult.success ? testResult.message : testResult.error }}
@@ -303,6 +353,10 @@ const events = computed(() => [
 </template>
 
 <style scoped>
+.switch { @apply relative w-11 h-6 rounded-full bg-ink-700 border border-line-strong transition-colors flex-shrink-0; }
+.switch span { @apply absolute top-0.5 left-0.5 w-[18px] h-[18px] rounded-full bg-fg-muted transition-all; }
+.switch.on { @apply bg-moss-400 border-moss-400; }
+.switch.on span { @apply left-[22px] bg-moss-ink; }
 .snav { @apply flex items-center gap-2.5 h-9 px-3 rounded-lg text-[13.5px] font-medium text-fg-muted whitespace-nowrap transition-colors hover:text-fg hover:bg-ink-800/70; }
 .snav.on { @apply text-fg bg-ink-800; box-shadow: inset 0 0 0 1px rgb(var(--line-strong)); }
 .snav.on :deep(svg) { @apply text-moss-400; }

@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue'
 import { breeding as breedingApi, animals as animalsApi } from '@/api'
 import { bulk } from '@/api'
 import { useI18n } from '@/i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { fmtDate, sexNotation, sexBadge, errorMessage } from '@/utils/format'
 import PageHeader from '@/components/PageHeader.vue'
 import Icon from '@/components/Icon.vue'
@@ -12,6 +12,7 @@ import Modal from '@/components/Modal.vue'
 
 const { t } = useI18n()
 const router = useRouter()
+const route = useRoute()
 const formError = ref('')
 const bulkError = ref('')
 const bulkDone = ref('')
@@ -19,7 +20,7 @@ const bulkDone = ref('')
 const list = ref([])
 const allAnimals = ref([])
 const loading = ref(true)
-const showForm = ref(false)
+const showForm = ref(route.query.new === '1')
 const saving = ref(false)
 const editId = ref(null)
 const form = ref({

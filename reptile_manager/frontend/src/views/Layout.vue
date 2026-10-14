@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useI18n, setLocale, languages } from '@/i18n'
 import Icon from '@/components/Icon.vue'
 import Brand from '@/components/Brand.vue'
+import { canInstall, promptInstall, online } from '@/utils/pwa'
 
 const router = useRouter()
 const route  = useRoute()
@@ -12,12 +13,26 @@ const auth   = useAuthStore()
 const { t, locale } = useI18n()
 
 const drawer   = ref(false)
+const quick    = ref(false)
 const isMobile = ref(false)
 
 function checkMobile() { isMobile.value = window.innerWidth < 1024 }
 onMounted(() => { checkMobile(); window.addEventListener('resize', checkMobile) })
 onUnmounted(() => window.removeEventListener('resize', checkMobile))
-router.afterEach(() => { drawer.value = false })
+router.afterEach(() => { drawer.value = false; quick.value = false })
+
+const tabs = [
+  { to: '/dashboard', icon: 'dashboard', key: 'nav.dashboard' },
+  { to: '/animals',   icon: 'reptile',   key: 'nav.animals' },
+  null,
+  { to: '/feedings',  icon: 'feeding',   key: 'nav.feedings' },
+]
+const quickActions = [
+  { to: '/feedings?new=1', icon: 'feeding', key: 'feeding.add' },
+  { to: '/sheddings?new=1', icon: 'shed', key: 'shedding.add' },
+  { to: '/animals/new', icon: 'reptile', key: 'animal.add' },
+  { to: '/breeding?new=1', icon: 'egg', key: 'breeding.add' },
+]
 
 const sections = computed(() => {
   const main = [
@@ -56,7 +71,8 @@ function logout() {
 <template>
   <div class="min-h-screen lg:flex">
     <!-- Mobile top bar -->
-    <header class="lg:hidden sticky top-0 z-30 flex items-center gap-3 px-4 h-14 border-b border-line bg-ink-950/85 backdrop-blur-md">
+    <header class="lg:hidden sticky top-0 z-30 flex items-center gap-3 px-4 h-14 border-b border-line bg-ink-950/85 backdrop-blur-md"
+            style="padding-top: env(safe-area-inset-top); height: calc(3.5rem + env(safe-area-inset-top))">
       <button class="icon-btn -ml-1" @click="drawer = true" aria-label="Menu"><Icon name="menu" :size="20" /></button>
       <Brand :size="26" />
       <span class="font-display font-semibold text-fg truncate">{{ currentTitle }}</span>
@@ -99,6 +115,9 @@ function logout() {
       </nav>
 
       <div class="p-3 border-t border-line flex-shrink-0 space-y-3">
+        <button v-if="canInstall" class="btn-secondary w-full" @click="promptInstall">
+          <Icon name="download" :size="16" />{{ t('pwa.install') }}
+        </button>
         <div class="flex items-center justify-between px-2">
           <span class="eyebrow">{{ t('settings.language') }}</span>
           <div class="seg">
@@ -123,12 +142,49 @@ function logout() {
 
     <!-- Main -->
     <main class="flex-1 min-w-0">
-      <div class="mx-auto w-full max-w-[1240px] px-4 sm:px-6 lg:px-10 py-6 lg:py-10">
+      <div v-if="!online" class="sticky top-14 lg:top-0 z-20 bg-heat-400/15 border-b border-heat-400/30 text-heat-400 text-[13px] px-4 py-2 flex items-center gap-2 backdrop-blur">
+        <Icon name="alert" :size="15" />{{ t('pwa.offline') }}
+      </div>
+      <div class="mx-auto w-full max-w-[1240px] px-4 sm:px-6 lg:px-10 py-6 lg:py-10 pb-28 lg:pb-10">
         <RouterView v-slot="{ Component }">
           <component :is="Component" :key="route.fullPath" />
         </RouterView>
       </div>
     </main>
+
+    <!-- Mobile tab bar -->
+    <nav class="lg:hidden fixed bottom-0 inset-x-0 z-30 border-t border-line bg-ink-950/90 backdrop-blur-xl"
+         style="padding-bottom: env(safe-area-inset-bottom)">
+      <div class="grid grid-cols-5 h-16">
+        <template v-for="(tab, i) in tabs" :key="i">
+          <RouterLink v-if="tab" :to="tab.to" class="tabbar-item" :class="{ on: route.path.startsWith(tab.to) }">
+            <Icon :name="tab.icon" :size="21" /><span>{{ t(tab.key) }}</span>
+          </RouterLink>
+          <div v-else class="grid place-items-center">
+            <button class="w-12 h-12 -mt-5 rounded-2xl bg-moss-400 text-moss-ink grid place-items-center shadow-glow active:scale-95 transition-transform"
+                    :aria-label="t('common.add')" @click="quick = !quick">
+              <Icon :name="quick ? 'x' : 'plus'" :size="22" :stroke="2.4" />
+            </button>
+          </div>
+        </template>
+        <button class="tabbar-item" @click="drawer = true"><Icon name="menu" :size="21" /><span>{{ t('nav.more') }}</span></button>
+      </div>
+    </nav>
+
+    <!-- Quick add sheet -->
+    <Transition name="fade">
+      <div v-if="quick" class="lg:hidden fixed inset-0 z-20 bg-black/60 backdrop-blur-sm" @click="quick = false" />
+    </Transition>
+    <Transition name="sheet">
+      <div v-if="quick" class="lg:hidden fixed inset-x-3 z-30 rounded-2xl bg-ink-900 shadow-pop p-2 grid grid-cols-2 gap-2"
+           style="bottom: calc(5rem + env(safe-area-inset-bottom))">
+        <RouterLink v-for="a in quickActions" :key="a.to" :to="a.to"
+                    class="flex flex-col items-start gap-2 rounded-xl border border-line bg-ink-850 p-3.5 active:bg-ink-800">
+          <span class="w-9 h-9 rounded-lg bg-moss-400/10 text-moss-400 grid place-items-center"><Icon :name="a.icon" :size="18" /></span>
+          <span class="text-[13.5px] font-semibold text-fg">{{ t(a.key) }}</span>
+        </RouterLink>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -146,5 +202,9 @@ function logout() {
   box-shadow: 0 0 12px rgb(var(--moss-400) / .7);
 }
 .fade-enter-active, .fade-leave-active { transition: opacity .2s; }
+.sheet-enter-active, .sheet-leave-active { transition: transform .25s cubic-bezier(.2,.7,.2,1), opacity .2s; }
+.sheet-enter-from, .sheet-leave-to { transform: translateY(16px); opacity: 0; }
+.tabbar-item { @apply flex flex-col items-center justify-center gap-1 text-[10.5px] font-semibold text-fg-faint transition-colors; }
+.tabbar-item.on { @apply text-moss-400; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>
