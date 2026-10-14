@@ -14,7 +14,8 @@ def _enrich(s: models.Shedding, db: Session) -> schemas.SheddingResponse:
         animal_name=animal.name if animal else None,
     )
 
-@router.get("/", response_model=List[schemas.SheddingResponse])
+@router.get("", response_model=List[schemas.SheddingResponse])
+@router.get("/", response_model=List[schemas.SheddingResponse], include_in_schema=False)
 def list_sheddings(
     skip: int = 0,
     limit: int = 100,
@@ -28,7 +29,8 @@ def list_sheddings(
     sheddings = q.order_by(models.Shedding.date.desc()).offset(skip).limit(limit).all()
     return [_enrich(s, db) for s in sheddings]
 
-@router.post("/", response_model=schemas.SheddingResponse, status_code=201)
+@router.post("", response_model=schemas.SheddingResponse, status_code=201)
+@router.post("/", response_model=schemas.SheddingResponse, status_code=201, include_in_schema=False)
 async def create_shedding(
     data: schemas.SheddingCreate,
     db: Session = Depends(get_db),

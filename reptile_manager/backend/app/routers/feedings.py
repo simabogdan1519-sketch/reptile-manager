@@ -14,7 +14,8 @@ def _enrich(f: models.Feeding, db: Session) -> schemas.FeedingResponse:
         animal_name=animal.name if animal else None,
     )
 
-@router.get("/", response_model=List[schemas.FeedingResponse])
+@router.get("", response_model=List[schemas.FeedingResponse])
+@router.get("/", response_model=List[schemas.FeedingResponse], include_in_schema=False)
 def list_feedings(
     skip: int = 0,
     limit: int = 100,
@@ -28,7 +29,8 @@ def list_feedings(
     feedings = q.order_by(models.Feeding.date.desc()).offset(skip).limit(limit).all()
     return [_enrich(f, db) for f in feedings]
 
-@router.post("/", response_model=schemas.FeedingResponse, status_code=201)
+@router.post("", response_model=schemas.FeedingResponse, status_code=201)
+@router.post("/", response_model=schemas.FeedingResponse, status_code=201, include_in_schema=False)
 async def create_feeding(
     data: schemas.FeedingCreate,
     db: Session = Depends(get_db),

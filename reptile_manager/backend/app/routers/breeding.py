@@ -22,7 +22,8 @@ def _enrich(event: models.BreedingEvent, db: Session) -> schemas.BreedingEventRe
     data["male"]   = schemas.AnimalSummary.model_validate(male)
     return schemas.BreedingEventResponse(**data)
 
-@router.get("/", response_model=List[schemas.BreedingEventResponse])
+@router.get("", response_model=List[schemas.BreedingEventResponse])
+@router.get("/", response_model=List[schemas.BreedingEventResponse], include_in_schema=False)
 def list_breeding(
     skip: int = 0,
     limit: int = 100,
@@ -39,7 +40,8 @@ def list_breeding(
     events = q.order_by(models.BreedingEvent.created_at.desc()).offset(skip).limit(limit).all()
     return [_enrich(e, db) for e in events]
 
-@router.post("/", response_model=schemas.BreedingEventResponse, status_code=201)
+@router.post("", response_model=schemas.BreedingEventResponse, status_code=201)
+@router.post("/", response_model=schemas.BreedingEventResponse, status_code=201, include_in_schema=False)
 async def create_breeding(
     data: schemas.BreedingEventCreate,
     db: Session = Depends(get_db),

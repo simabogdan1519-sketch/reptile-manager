@@ -34,7 +34,8 @@ def _enrich_animal(animal: models.Animal, db: Session) -> schemas.AnimalResponse
     data["is_active"] = animal.status == "active"
     return schemas.AnimalResponse(**data)
 
-@router.get("/", response_model=List[schemas.AnimalResponse])
+@router.get("", response_model=List[schemas.AnimalResponse])
+@router.get("/", response_model=List[schemas.AnimalResponse], include_in_schema=False)
 def list_animals(
     skip: int = 0, limit: int = 100,
     search: Optional[str] = None,
@@ -58,7 +59,8 @@ def list_animals(
     animals = q.order_by(models.Animal.name).offset(skip).limit(limit).all()
     return [_enrich_animal(a, db) for a in animals]
 
-@router.post("/", response_model=schemas.AnimalResponse, status_code=201)
+@router.post("", response_model=schemas.AnimalResponse, status_code=201)
+@router.post("/", response_model=schemas.AnimalResponse, status_code=201, include_in_schema=False)
 def create_animal(
     data: schemas.AnimalCreate,
     db: Session = Depends(get_db),
