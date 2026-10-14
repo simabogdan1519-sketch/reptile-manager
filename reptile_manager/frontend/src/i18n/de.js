@@ -1,4 +1,22 @@
 export default {
+  access: {
+    nav: 'Benutzer & Gruppen',
+    users: 'Benutzer', groups: 'Gruppen',
+    add_user: 'Benutzer hinzufügen', add_group: 'Gruppe hinzufügen', edit_user: 'Benutzer bearbeiten', edit_group: 'Gruppe bearbeiten',
+    username: 'Benutzername', password: 'Passwort', password_keep: 'Leer lassen = Passwort bleibt unverändert',
+    email: 'E-Mail', admin: 'Administrator', active: 'Aktiv', disabled: 'Deaktiviert',
+    admin_hint: 'Admins sehen und verwalten alle Tiere, Benutzer und Gruppen.',
+    member_of: 'Mitglied in', members: 'Mitglieder', animals: 'Tiere',
+    group_name: 'Gruppenname', description: 'Beschreibung',
+    no_users: 'Noch keine Benutzer.', no_groups: 'Noch keine Gruppen. Gruppe anlegen, Mitglieder hinzufügen und dann Tiere zuweisen.',
+    confirm_delete_user: 'Diesen Benutzer löschen?', confirm_delete_group: 'Diese Gruppe löschen? Die Tiere bleiben erhalten, sind dann aber nur für Admins sichtbar.',
+    group: 'Gruppe', no_group: '— Keine Gruppe (nur Admins) —', choose_group: '— Gruppe wählen —',
+    group_hint: 'Nur Mitglieder dieser Gruppe (und Admins) sehen dieses Tier.',
+    unassigned: 'Nicht zugewiesen', all_groups: 'Alle Gruppen',
+    change_password: 'Passwort ändern', current_password: 'Aktuelles Passwort', new_password: 'Neues Passwort',
+    password_changed: 'Passwort geändert.',
+    you: 'du',
+  },
   nav: {
     dashboard: 'Dashboard', animals: 'Tiere', feedings: 'Fütterungen',
     sheddings: 'Häutungen', breeding: 'Zucht', settings: 'Einstellungen', herkunftsnachweis: 'Herkunftsnachweis',

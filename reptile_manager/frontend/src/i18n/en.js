@@ -1,4 +1,22 @@
 export default {
+  access: {
+    nav: 'Users & Groups',
+    users: 'Users', groups: 'Groups',
+    add_user: 'Add user', add_group: 'Add group', edit_user: 'Edit user', edit_group: 'Edit group',
+    username: 'Username', password: 'Password', password_keep: 'Leave empty to keep the current password',
+    email: 'E-mail', admin: 'Administrator', active: 'Active', disabled: 'Disabled',
+    admin_hint: 'Admins see and manage all animals, users and groups.',
+    member_of: 'Member of', members: 'Members', animals: 'Animals',
+    group_name: 'Group name', description: 'Description',
+    no_users: 'No users yet.', no_groups: 'No groups yet. Create a group, add members, then assign animals to it.',
+    confirm_delete_user: 'Delete this user?', confirm_delete_group: 'Delete this group? Its animals stay but become visible to admins only.',
+    group: 'Group', no_group: '— No group (admins only) —', choose_group: '— Choose a group —',
+    group_hint: 'Only members of this group (and admins) can see this animal.',
+    unassigned: 'Unassigned', all_groups: 'All groups',
+    change_password: 'Change password', current_password: 'Current password', new_password: 'New password',
+    password_changed: 'Password changed.',
+    you: 'you',
+  },
   nav: {
     dashboard: 'Dashboard', animals: 'Animals', feedings: 'Feedings',
     sheddings: 'Sheddings', breeding: 'Breeding', settings: 'Settings', herkunftsnachweis: 'Origin Certificate',
